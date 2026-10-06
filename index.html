@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Analizador L5-S1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Source+Sans+3:wght@400;600&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: herramienta de dos columnas — lienzo de medición a la izquierda, panel de datos/resultados a la derecha; una columna en móvil. % CM medido desde el extremo proximal */
+:root{
+  --bg:#f3f5f7; --surface:#ffffff; --ink:#15212b; --muted:#5a6a78; --line:#d5dde4;
+  --accent:#0b6c8c; --accent-soft:#dcedf3; --load:#b4531a; --body:#0b6c8c;
+  --ok:#237a45; --ok-bg:#e1f2e7; --warn:#a36a00; --warn-bg:#fbefd6; --bad:#b3261e; --bad-bg:#f9e0de;
+  --canvas-bg:#e9eef2; --grid:#cfd8df;
+  --f-display:"Archivo","Segoe UI",system-ui,sans-serif;
+  --f-body:"Source Sans 3","Segoe UI",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f161c; --surface:#16212a; --ink:#e3eaf0; --muted:#95a6b4; --line:#2a3945;
+  --accent:#4fb3d4; --accent-soft:#17333f; --load:#f0955a; --body:#4fb3d4;
+  --ok:#6ccf8e; --ok-bg:#15301f; --warn:#f0c05a; --warn-bg:#342a12; --bad:#ff8a80; --bad-bg:#3a1a18;
+  --canvas-bg:#0b1116; --grid:#22303b; color-scheme:dark }}
+:root[data-theme="dark"]{
+  --bg:#0f161c; --surface:#16212a; --ink:#e3eaf0; --muted:#95a6b4; --line:#2a3945;
+  --accent:#4fb3d4; --accent-soft:#17333f; --load:#f0955a; --body:#4fb3d4;
+  --ok:#6ccf8e; --ok-bg:#15301f; --warn:#f0c05a; --warn-bg:#342a12; --bad:#ff8a80; --bad-bg:#3a1a18;
+  --canvas-bg:#0b1116; --grid:#22303b; color-scheme:dark }
+*{box-sizing:border-box}
+html{color-scheme:light}
+body{margin:0}
+img{max-width:100%}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1320px;margin:0 auto;padding-inline:16px;padding-block:20px 48px}
+header.top{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;margin-bottom:16px}
+h1{font-family:var(--f-display);font-weight:800;font-size:1.6rem;letter-spacing:-.01em;margin:0}
+h1 span{color:var(--accent)}
+.sub{color:var(--muted);margin:2px 0 0;max-width:62ch}
+h2{font-family:var(--f-display);font-weight:700;font-size:.8rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.grid{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:14px 16px;min-width:0}
+.stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px}
+button,.filebtn{font:600 .9rem var(--f-body);border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:7px;padding:7px 12px;cursor:pointer}
+button:hover,.filebtn:hover{border-color:var(--accent)}
+button.primary,.filebtn.primary{background:var(--accent);border-color:var(--accent);color:var(--surface)}
+button:focus-visible,.filebtn:focus-within,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.filebtn input{position:absolute;opacity:0;width:1px;height:1px}
+.hint{background:var(--accent-soft);border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:.95rem}
+.hint b{font-family:var(--f-display)}
+.canvas-box{background:var(--canvas-bg);border-radius:8px;overflow:hidden;touch-action:none}
+canvas{display:block;width:100%;height:auto;cursor:crosshair}
+.pts{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;margin-top:10px}
+.pt{display:flex;align-items:center;gap:8px;text-align:left;font-weight:400;padding:6px 9px}
+.pt .dot{width:10px;height:10px;border-radius:50%;border:2px solid var(--muted);flex:none}
+.pt.done .dot{background:var(--accent);border-color:var(--accent)}
+.pt.active{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.pt small{color:var(--muted);margin-left:auto;font-size:.75rem}
+.fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px}
+label.f{display:flex;flex-direction:column;gap:3px;font-size:.85rem;color:var(--muted)}
+input,select{font:400 .95rem var(--f-mono);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%;min-width:0}
+.check{display:flex;align-items:center;gap:8px;font-size:.9rem}
+.check input{width:auto}
+.verdict{border-radius:9px;padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.verdict .big{font:700 2rem/1.1 var(--f-mono);font-variant-numeric:tabular-nums}
+.verdict .lbl{font-family:var(--f-display);font-weight:700}
+.v-ok{background:var(--ok-bg);color:var(--ok)} .v-warn{background:var(--warn-bg);color:var(--warn)} .v-bad{background:var(--bad-bg);color:var(--bad)} .v-none{background:var(--bg);color:var(--muted)}
+.meter{position:relative;height:10px;border-radius:5px;background:linear-gradient(90deg,var(--ok) 0 42.5%,var(--warn) 42.5% 80%,var(--bad) 80% 100%);opacity:.85;margin-top:10px}
+.meter i{position:absolute;top:-4px;width:3px;height:18px;background:var(--ink);border-radius:2px;transform:translateX(-1px)}
+.scale{display:flex;justify-content:space-between;font:400 .72rem var(--f-mono);color:var(--muted);margin-top:3px;position:relative;height:1em}
+.scale span{position:absolute;transform:translateX(-50%)}
+.kv{display:grid;grid-template-columns:1fr auto;gap:4px 12px;margin:12px 0 0;font-size:.93rem}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right}
+.kv .sep{grid-column:1/-1;border-top:1px solid var(--line);margin:4px 0}
+.tbl-wrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.86rem}
+th,td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+th{font-weight:600;color:var(--muted);font-size:.78rem}
+td{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+td:first-child{font-family:var(--f-body)}
+td input{width:4.8em;padding:3px 5px;text-align:right}
+.note{font-size:.82rem;color:var(--muted);margin:8px 0 0}
+.cmp{display:flex;flex-direction:column;gap:8px}
+.bar-row{display:grid;grid-template-columns:5.5em minmax(0,1fr) 5.5em;gap:8px;align-items:center;font-size:.88rem}
+.bar-track{position:relative;height:18px;background:var(--bg);border-radius:4px}
+.bar-fill{position:absolute;inset:0 auto 0 0;border-radius:4px}
+.bar-track .lim{position:absolute;top:-3px;bottom:-3px;width:0;border-left:2px dashed var(--muted)}
+.bar-row .v{font-family:var(--f-mono);text-align:right;font-variant-numeric:tabular-nums}
+textarea{width:100%;font:.8rem var(--f-mono);background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px;min-height:90px}
+.tag{display:inline-block;font:600 .72rem var(--f-display);letter-spacing:.06em;text-transform:uppercase;background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:2px 6px;vertical-align:middle}
+footer{margin-top:20px;color:var(--muted);font-size:.82rem;max-width:90ch}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Analizador <span>L5-S1</span></h1>
+      <p class="sub">Cargá una foto de perfil de un levantamiento, marcá los puntos anatómicos y el modelo calcula el momento en L5-S1, la fuerza de los erectores y la compresión lumbar.</p>
+    </div>
+    <span class="tag" id="modeTag">Ejemplo cargado</span>
+  </header>
+
+  <div class="grid">
+    <!-- Columna izquierda: lienzo -->
+    <section class="panel" aria-label="Foto y puntos">
+      <div class="toolbar">
+        <label class="filebtn primary">Cargar foto<input type="file" id="file" accept="image/*"></label>
+        <button id="btnDemo" type="button">Ver ejemplo</button>
+        <button id="btnClearPt" type="button">Borrar punto activo</button>
+        <button id="btnReset" type="button">Borrar todos los puntos</button>
+      </div>
+      <div class="hint" id="hint" aria-live="polite"></div>
+      <div class="canvas-box"><canvas id="cv" width="800" height="1000" aria-label="Foto con los puntos marcados"></canvas></div>
+      <div class="pts" id="ptList"></div>
+      <p class="note">Tocá un punto de la lista para volver a marcarlo, o arrastrá el marcador sobre la foto. La foto no sale de tu navegador.</p>
+    </section>
+
+    <!-- Columna derecha -->
+    <div class="stack">
+      <section class="panel" aria-label="Datos">
+        <h2>Datos del sujeto y la carga</h2>
+        <div class="fields">
+          <label class="f">Masa corporal (kg)<input id="mBody" type="number" step="0.1" min="1" value="78"></label>
+          <label class="f">Masa de la carga (kg)<input id="mLoad" type="number" step="0.1" min="0" value="15"></label>
+          <label class="f">Sexo (tabla de Leva)<select id="sex"><option value="M">Masculino</option><option value="F">Femenino</option></select></label>
+          <label class="f">Largo de la referencia (cm)<input id="refLen" type="number" step="0.1" min="0.1" value="32"></label>
+          <label class="f">Brazo erectores (cm)<input id="dMus" type="number" step="0.1" min="0.1" value="5.9"></label>
+          <label class="f">Mira hacia<select id="facing"><option value="auto">Automático</option><option value="R">Derecha</option><option value="L">Izquierda</option></select></label>
+        </div>
+        <label class="check" style="margin-top:10px"><input type="checkbox" id="bilat" checked> Contar los dos brazos (simetría en 2D)</label>
+      </section>
+
+      <section class="panel" aria-label="Resultado">
+        <h2>Compresión en L5-S1</h2>
+        <div class="verdict v-none" id="verdict">
+          <span class="big" id="fcBig">—</span>
+          <span class="lbl" id="fcLbl">Faltan puntos</span>
+        </div>
+        <div class="meter" aria-hidden="true"><i id="meterMark" style="left:0"></i></div>
+        <div class="scale" aria-hidden="true"><span style="left:0;transform:none">0</span><span style="left:42.5%">3400 N</span><span style="left:80%">6400 N</span><span style="left:100%;transform:translateX(-100%)">8000</span></div>
+        <dl class="kv" id="kv"></dl>
+        <div class="toolbar" style="margin-top:12px;margin-bottom:0">
+          <button type="button" id="saveA">Guardar como postura A</button>
+          <button type="button" id="saveB">Guardar como postura B</button>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="Comparación" id="cmpPanel">
+        <h2>Comparación de posturas</h2>
+        <div class="cmp" id="cmp"></div>
+        <div class="tbl-wrap" style="margin-top:10px"><table id="cmpTbl"></table></div>
+      </section>
+    </div>
+  </div>
+
+  <div class="grid" style="margin-top:16px">
+    <section class="panel" aria-label="Detalle por segmento">
+      <h2>Detalle por segmento</h2>
+      <div class="tbl-wrap"><table id="segTbl"></table></div>
+      <p class="note">Momento positivo = tiende a flexionar el tronco hacia adelante. Brazo = distancia horizontal entre el CM y L5-S1.</p>
+    </section>
+    <section class="panel" aria-label="Parámetros del modelo">
+      <h2>Parámetros antropométricos (editables)</h2>
+      <div class="tbl-wrap"><table id="parTbl"></table></div>
+      <div class="toolbar" style="margin-top:10px;margin-bottom:0"><button type="button" id="parReset">Restaurar valores de de Leva</button></div>
+      <p class="note">% CM medido desde el primer extremo de cada segmento. Fuente: de Leva (1996). "Tronco sobre L5-S1" = tronco superior + medio; su CM se estimó combinando ambos subsegmentos a lo largo de C7→L5-S1. Revisar y citar en el informe.</p>
+    </section>
+  </div>
+
+  <section class="panel" style="margin-top:16px" aria-label="Exportar">
+    <h2>Llevar los resultados a Excel</h2>
+    <div class="toolbar"><button type="button" class="primary" id="btnCopy">Copiar tabla</button><span id="copyMsg" class="note" style="margin:0"></span></div>
+    <textarea id="out" readonly aria-label="Resultados en texto separado por tabulaciones"></textarea>
+  </section>
+
+  <footer>
+    Modelo estático 2D en el plano sagital. M<sub>L5/S1</sub> = Σ m<sub>i</sub>·g·d<sub>i</sub>; F<sub>m</sub> = M / d<sub>erectores</sub>; F<sub>c</sub> = F<sub>m</sub> + (P<sub>sup</sub> + P<sub>carga</sub>)·cos θ; F<sub>corte</sub> = (P<sub>sup</sub> + P<sub>carga</sub>)·sin θ, con θ = inclinación de C7→L5-S1 respecto de la vertical. Límites NIOSH: 3400 N (acción) y 6400 N (máximo). No considera aceleraciones, presión intraabdominal ni cocontracción. Uso académico, sin fines diagnósticos. Trabajo Integrador Biomecánica — Grupo 21, FCEFyN-UNC.
+  </footer>
+</div>
+
+<script>
+(()=>{
+const G = 9.81;
+// ---------- Puntos ----------
+const POINTS = [
+  {id:'cal1', name:'Referencia: extremo 1', grp:'cal'},
+  {id:'cal2', name:'Referencia: extremo 2', grp:'cal'},
+  {id:'l5',   name:'L5-S1'},
+  {id:'c7',   name:'C7'},
+  {id:'vert', name:'Vértex'},
+  {id:'sho',  name:'Hombro'},
+  {id:'elb',  name:'Codo'},
+  {id:'wri',  name:'Muñeca'},
+  {id:'hand', name:'Mano (3er metacarpiano)'},
+  {id:'load', name:'Centro de la carga'},
+  {id:'hip',  name:'Cadera', opt:true},
+  {id:'knee', name:'Rodilla', opt:true},
+  {id:'ank',  name:'Tobillo', opt:true},
+];
+const HELP = {
+  cal1:'un extremo del objeto de largo conocido (ej. la tapa del termo)',
+  cal2:'el otro extremo del objeto de referencia',
+  l5:'aprox. a la altura de las crestas ilíacas, sobre la espalda',
+  c7:'la vértebra que más sobresale en la base del cuello',
+  vert:'el punto más alto de la cabeza',
+  sho:'el centro de la articulación del hombro',
+  elb:'el centro del codo',
+  wri:'el centro de la muñeca',
+  hand:'los nudillos del dedo medio',
+  load:'el centro de la caja o del objeto levantado',
+  hip:'el trocánter mayor (opcional, para el ángulo de rodilla)',
+  knee:'el centro de la rodilla (opcional)',
+  ank:'el maléolo del tobillo (opcional)',
+};
+// ---------- de Leva (1996) ----------
+const DELEVA = {
+  M:{head:[6.94,50.02], trunk:[32.29,50.7], uarm:[2.71,57.72], farm:[1.62,45.74], hand:[0.61,79.00]},
+  F:{head:[6.68,48.41], trunk:[30.10,49.6], uarm:[2.55,57.54], farm:[1.38,45.59], hand:[0.56,74.74]},
+};
+const SEGS = [
+  {id:'head',  name:'Cabeza y cuello', a:'vert', b:'c7'},
+  {id:'trunk', name:'Tronco sobre L5-S1', a:'c7', b:'l5'},
+  {id:'uarm',  name:'Brazo', a:'sho', b:'elb', arm:true},
+  {id:'farm',  name:'Antebrazo', a:'elb', b:'wri', arm:true},
+  {id:'hand',  name:'Mano', a:'wri', b:'hand', arm:true},
+];
+let params = JSON.parse(JSON.stringify(DELEVA.M));
+
+// ---------- Estado ----------
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+let img = null, imgW = 800, imgH = 1000, isDemo = true;
+let pts = {}; let active = 'cal1'; let drag = null;
+let saved = {A:null, B:null};
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// ---------- Escena de ejemplo ----------
+const DEMO_PTS = {cal1:[150,822], cal2:[150,950], ank:[360,930], knee:[372,748], hip:[352,566], l5:[338,548],
+  c7:[511,448], vert:[602,398], sho:[498,468], elb:[505,586], wri:[510,694], hand:[512,728], load:[516,772]};
+function demoImage(){
+  const c = document.createElement('canvas'); c.width=800; c.height=1000; const g=c.getContext('2d');
+  const dark = matchMedia('(prefers-color-scheme: dark)').matches && document.documentElement.dataset.theme!=='light' || document.documentElement.dataset.theme==='dark';
+  g.fillStyle = dark?'#101820':'#eef2f5'; g.fillRect(0,0,800,1000);
+  g.strokeStyle = dark?'#1d2a34':'#d9e1e7'; g.lineWidth=1;
+  for(let x=0;x<=800;x+=40){g.beginPath();g.moveTo(x,0);g.lineTo(x,1000);g.stroke();}
+  for(let y=0;y<=1000;y+=40){g.beginPath();g.moveTo(0,y);g.lineTo(800,y);g.stroke();}
+  g.fillStyle = dark?'#24323d':'#c9d3db'; g.fillRect(0,950,800,50);
+  // termo (32 cm = 128 px)
+  g.fillStyle = dark?'#7a3b3b':'#8f2f36'; g.fillRect(136,822,28,128);
+  // caja
+  g.fillStyle = dark?'#6b5234':'#c9a26b'; g.fillRect(470,735,95,75);
+  g.strokeStyle = dark?'#8c6c46':'#a5814f'; g.strokeRect(470,735,95,75);
+  // silueta simple
+  g.strokeStyle = dark?'#3c4c58':'#aab7c2'; g.lineCap='round'; g.lineWidth=34;
+  const P=DEMO_PTS, seg=(a,b)=>{g.beginPath();g.moveTo(...P[a]);g.lineTo(...P[b]);g.stroke();};
+  seg('ank','knee'); seg('knee','hip'); g.lineWidth=46; seg('l5','c7'); g.lineWidth=22; seg('sho','elb'); seg('elb','wri');
+  g.fillStyle = g.strokeStyle; g.beginPath(); g.arc(575,410,34,0,7); g.fill();
+  g.fillStyle = dark?'#6d7f8c':'#5d6f7c'; g.font='600 20px "IBM Plex Mono", monospace';
+  g.fillText('EJEMPLO — 1 cuadro = 10 cm', 20, 36);
+  const im = new Image(); im.src = c.toDataURL(); return im;
+}
+function loadDemo(){
+  img = demoImage(); imgW=800; imgH=1000; isDemo=true;
+  pts = {}; for(const k in DEMO_PTS) pts[k]=[...DEMO_PTS[k]];
+  $('mBody').value=78; $('mLoad').value=15; $('refLen').value=32; $('sex').value='M'; setSex('M');
+  active = null; $('modeTag').textContent='Ejemplo cargado'; $('modeTag').hidden=false;
+  img.onload = ()=>{ sizeCanvas(); update(); };
+}
+
+// ---------- Canvas ----------
+let k = 1; // px de pantalla por px de imagen
+function sizeCanvas(){
+  const w = cv.parentElement.clientWidth || 600;
+  const maxH = Math.max(420, window.innerHeight*0.78);
+  k = Math.min(w/imgW, maxH/imgH);
+  const dpr = window.devicePixelRatio||1;
+  cv.style.width = (imgW*k)+'px'; cv.style.height=(imgH*k)+'px';
+  cv.width = Math.round(imgW*k*dpr); cv.height = Math.round(imgH*k*dpr);
+  ctx.setTransform(dpr*k,0,0,dpr*k,0,0);
+  cv.parentElement.style.display='flex'; cv.parentElement.style.justifyContent='center';
+}
+function toImg(e){ const r=cv.getBoundingClientRect(); return [(e.clientX-r.left)/k, (e.clientY-r.top)/k]; }
+function hit(p){ const R=14/k; let best=null,bd=R; for(const id in pts){ const d=Math.hypot(pts[id][0]-p[0],pts[id][1]-p[1]); if(d<bd){bd=d;best=id;} } return best; }
+cv.addEventListener('pointerdown',e=>{
+  const p=toImg(e); const h=hit(p);
+  if(h && h!==active){ drag=h; cv.setPointerCapture(e.pointerId); return; }
+  if(active){ pts[active]=p; drag=active; cv.setPointerCapture(e.pointerId); advance(); update(); }
+});
+cv.addEventListener('pointermove',e=>{ if(!drag) return; pts[drag]=toImg(e); update(); });
+cv.addEventListener('pointerup',()=>{ drag=null; });
+function advance(){ const next = POINTS.find(p=>!pts[p.id]); active = next?next.id:null; }
+
+// ---------- Modelo ----------
+function compute(){
+  const need=['cal1','cal2','l5','c7','vert','sho','elb','wri','hand'];
+  const missing = need.filter(id=>!pts[id]);
+  const Mb = +$('mBody').value||0, Ml = +$('mLoad').value||0, Lref=(+$('refLen').value||0)/100, dm=(+$('dMus').value||0)/100;
+  if(missing.length || !Lref || !dm) return {ok:false, missing};
+  const s = Lref / Math.hypot(pts.cal2[0]-pts.cal1[0], pts.cal2[1]-pts.cal1[1]); // m por px
+  if(!isFinite(s)) return {ok:false, missing:['cal2']};
+  const W = id => [pts[id][0]*s, -pts[id][1]*s]; // eje y hacia arriba
+  const L5 = W('l5');
+  let dir;
+  const f=$('facing').value;
+  if(f==='R') dir=1; else if(f==='L') dir=-1;
+  else { const ref = pts.load? W('load') : W('c7'); dir = (ref[0]-L5[0])>=0?1:-1; }
+  const bil = $('bilat').checked;
+  const rows=[]; let Msum=0, Wsup=0, xw=0;
+  for(const sg of SEGS){
+    const [pct,cm]=params[sg.id]; const A=W(sg.a), B=W(sg.b);
+    const x = A[0]+(B[0]-A[0])*cm/100, y = A[1]+(B[1]-A[1])*cm/100;
+    const m = pct/100*Mb*(sg.arm&&bil?2:1); const Wt=m*G; const d=(x-L5[0])*dir; const Mo=Wt*d;
+    rows.push({name:sg.name+(sg.arm&&bil?' (×2)':''), m, d, M:Mo, px:[x/s,-y/s], W:Wt});
+    Msum+=Mo; Wsup+=Wt; xw+=Wt*d;
+  }
+  let dLoad=0, Wl=Ml*G, Mload=0;
+  if(pts.load){ const Lp=W('load'); dLoad=(Lp[0]-L5[0])*dir; Mload=Wl*dLoad; rows.push({name:'Carga', m:Ml, d:dLoad, M:Mload, px:[...pts.load], W:Wl, load:true}); }
+  const Mbody=Msum, Mtot=Msum+Mload;
+  const dBody = xw/Wsup;
+  const C7=W('c7'); const theta = Math.atan2((C7[0]-L5[0])*dir, C7[1]-L5[1]); // rad, + = flexión
+  const Fm = Math.max(0,Mtot)/dm;
+  const Wtot = Wsup+(pts.load?Wl:0);
+  const Fc = Fm + Wtot*Math.cos(theta);
+  const Fs = Wtot*Math.sin(theta);
+  let knee=null;
+  if(pts.hip&&pts.knee&&pts.ank){ const a=[pts.hip[0]-pts.knee[0],pts.hip[1]-pts.knee[1]], b=[pts.ank[0]-pts.knee[0],pts.ank[1]-pts.knee[1]];
+    knee = Math.acos((a[0]*b[0]+a[1]*b[1])/(Math.hypot(...a)*Math.hypot(...b)))*180/Math.PI; }
+  // CM del cuerpo superior (px imagen)
+  let cx=0,cy=0; rows.filter(r=>!r.load).forEach(r=>{cx+=r.W*r.px[0]; cy+=r.W*r.px[1];}); cx/=Wsup; cy/=Wsup;
+  return {ok:true, s, dir, rows, Mbody, Mload, Mtot, dBody, dLoad, theta, Fm, Fc, Fs, knee, Wsup, Wl, cmSup:[cx,cy], noLoad:!pts.load, negM:Mtot<0};
+}
+
+// ---------- Dibujo ----------
+function draw(R){
+  ctx.clearRect(0,0,imgW,imgH);
+  if(img && img.complete) ctx.drawImage(img,0,0,imgW,imgH);
+  const acc=css('--accent'), load=css('--load'), ink=css('--ink');
+  const lw = 2/k, fs = 13/k;
+  ctx.font = `600 ${fs}px "IBM Plex Mono", monospace`;
+  const line=(a,b,c,w=lw,dash=null)=>{ if(!pts[a]||!pts[b])return; ctx.strokeStyle=c; ctx.lineWidth=w; ctx.setLineDash(dash||[]); ctx.beginPath(); ctx.moveTo(...pts[a]); ctx.lineTo(...pts[b]); ctx.stroke(); ctx.setLineDash([]); };
+  // calibración
+  if(pts.cal1&&pts.cal2){ line('cal1','cal2','#d6336c',3/k); const m=[(pts.cal1[0]+pts.cal2[0])/2,(pts.cal1[1]+pts.cal2[1])/2]; label(`${$('refLen').value} cm`, m[0]+8/k, m[1], '#d6336c'); }
+  // segmentos
+  [['vert','c7'],['c7','l5'],['sho','elb'],['elb','wri'],['wri','hand'],['hip','knee'],['knee','ank'],['l5','hip']].forEach(([a,b])=>line(a,b,acc,3/k));
+  if(R && R.ok){
+    const L5=pts.l5;
+    // vertical por L5-S1
+    ctx.strokeStyle=ink; ctx.globalAlpha=.55; ctx.lineWidth=1.5/k; ctx.setLineDash([6/k,5/k]);
+    ctx.beginPath(); ctx.moveTo(L5[0],0); ctx.lineTo(L5[0],imgH); ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha=1;
+    // CM segmentarios
+    R.rows.filter(r=>!r.load).forEach(r=>{ ctx.fillStyle=acc; ctx.globalAlpha=.8; ctx.beginPath(); ctx.arc(r.px[0],r.px[1],(3+Math.sqrt(r.m)*1.6)/k,0,7); ctx.fill(); ctx.globalAlpha=1; });
+    // CM cuerpo superior + brazo
+    const cs=R.cmSup;
+    arm(cs, L5[0], acc, `${(R.dBody*100).toFixed(1)} cm`);
+    ctx.fillStyle=css('--surface'); ctx.strokeStyle=acc; ctx.lineWidth=2.5/k; ctx.beginPath(); ctx.arc(cs[0],cs[1],8/k,0,7); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cs[0]-8/k,cs[1]); ctx.lineTo(cs[0]+8/k,cs[1]); ctx.moveTo(cs[0],cs[1]-8/k); ctx.lineTo(cs[0],cs[1]+8/k); ctx.stroke();
+    if(pts.load) arm(pts.load, L5[0], load, `${(R.dLoad*100).toFixed(1)} cm`);
+    // ángulo tronco
+    label(`θ ${(R.theta*180/Math.PI).toFixed(0)}°`, L5[0]-62/k, L5[1]+30/k, ink);
+    if(R.knee!=null && pts.knee) label(`${R.knee.toFixed(0)}°`, pts.knee[0]-58/k, pts.knee[1]+5/k, ink);
+  }
+  // marcadores
+  for(const p of POINTS){ const q=pts[p.id]; if(!q) continue;
+    const isL = p.id==='load', isCal=p.grp==='cal', c = isL?load:isCal?'#d6336c':acc;
+    ctx.fillStyle=css('--surface'); ctx.strokeStyle=c; ctx.lineWidth=2.5/k;
+    ctx.beginPath(); ctx.arc(q[0],q[1],(p.id===active?8:6)/k,0,7); ctx.fill(); ctx.stroke();
+    ctx.fillStyle=c; ctx.beginPath(); ctx.arc(q[0],q[1],2/k,0,7); ctx.fill();
+  }
+  function arm(p, x0, c, txt){ ctx.strokeStyle=c; ctx.lineWidth=2.5/k; ctx.beginPath(); ctx.moveTo(x0,p[1]); ctx.lineTo(p[0],p[1]); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x0,p[1]-6/k); ctx.lineTo(x0,p[1]+6/k); ctx.stroke(); label(txt,Math.max(x0,p[0])+10/k,p[1]+5/k,c); }
+  function label(t,x,y,c){ const w=ctx.measureText(t).width; ctx.fillStyle=css('--surface'); ctx.globalAlpha=.85; ctx.fillRect(x-3/k,y-fs,w+6/k,fs*1.35); ctx.globalAlpha=1; ctx.fillStyle=c; ctx.fillText(t,x,y); }
+}
+
+// ---------- UI ----------
+const fmt=(v,d=0)=>isFinite(v)?v.toLocaleString('es-AR',{minimumFractionDigits:d,maximumFractionDigits:d}):'—';
+function classify(Fc){ if(Fc<3400) return ['v-ok','Por debajo del límite de acción NIOSH']; if(Fc<=6400) return ['v-warn','Supera el límite de acción (3400 N)']; return ['v-bad','Supera el límite máximo (6400 N)']; }
+function renderList(){
+  $('ptList').innerHTML = POINTS.map(p=>`<button type="button" class="pt ${pts[p.id]?'done':''} ${p.id===active?'active':''}" data-id="${p.id}"><span class="dot"></span>${p.name}${p.opt?'<small>opcional</small>':''}</button>`).join('');
+  $('ptList').querySelectorAll('button').forEach(b=>b.onclick=()=>{ active=b.dataset.id; update(); });
+  const h=$('hint');
+  if(active){ const p=POINTS.find(x=>x.id===active); h.innerHTML=`Marcá <b>${p.name}</b>: ${HELP[active]}.`; }
+  else h.innerHTML = `Todos los puntos marcados. Arrastralos para ajustar, o tocá uno de la lista para volver a marcarlo.`;
+}
+function update(){
+  const R=compute(); draw(R); renderList();
+  const v=$('verdict'), kv=$('kv');
+  if(!R.ok){
+    v.className='verdict v-none'; $('fcBig').textContent='—';
+    $('fcLbl').textContent = 'Faltan puntos: '+R.missing.map(id=>POINTS.find(p=>p.id===id)?.name||id).join(', ');
+    $('meterMark').style.left='0'; kv.innerHTML=''; $('segTbl').innerHTML=''; $('out').value=''; window._R=null; renderCmp(); return;
+  }
+  const [cls,lbl]=classify(R.Fc);
+  v.className='verdict '+cls; $('fcBig').textContent = fmt(R.Fc)+' N'; $('fcLbl').textContent=lbl;
+  $('meterMark').style.left = Math.min(100,R.Fc/8000*100)+'%';
+  const post = R.knee==null ? '—' : (R.knee<=140?'Rodillas flexionadas (tipo sentadilla)':'Rodillas extendidas (flexión de espalda)');
+  kv.innerHTML = `
+    <dt>Inclinación del tronco θ</dt><dd>${fmt(R.theta*180/Math.PI,1)}°</dd>
+    <dt>Ángulo de rodilla</dt><dd>${R.knee==null?'—':fmt(R.knee,0)+'°'}</dd>
+    <dt>Tipo de levantamiento (orientativo)</dt><dd style="font-family:var(--f-body)">${post}</dd>
+    <div class="sep"></div>
+    <dt>Brazo de palanca del cuerpo</dt><dd>${fmt(R.dBody*100,1)} cm</dd>
+    <dt>Brazo de palanca de la carga</dt><dd>${R.noLoad?'sin carga':fmt(R.dLoad*100,1)+' cm'}</dd>
+    <dt>Momento del cuerpo</dt><dd>${fmt(R.Mbody,1)} N·m</dd>
+    <dt>Momento de la carga</dt><dd>${fmt(R.Mload,1)} N·m</dd>
+    <dt><b>Momento total en L5-S1</b></dt><dd><b>${fmt(R.Mtot,1)} N·m</b></dd>
+    <div class="sep"></div>
+    <dt>Fuerza de los erectores F<sub>m</sub></dt><dd>${fmt(R.Fm)} N</dd>
+    <dt>Compresión F<sub>c</sub></dt><dd>${fmt(R.Fc)} N</dd>
+    <dt>Fuerza de corte</dt><dd>${fmt(R.Fs)} N</dd>
+    ${R.negM?'<dt style="grid-column:1/-1;color:var(--warn)">El momento es extensor (el peso cae detrás de L5-S1); se toma F<sub>m</sub> = 0.</dt>':''}`;
+  $('segTbl').innerHTML = `<thead><tr><th>Segmento</th><th>Masa (kg)</th><th>Peso (N)</th><th>Brazo (cm)</th><th>Momento (N·m)</th></tr></thead><tbody>`+
+    R.rows.map(r=>`<tr><td>${r.name}</td><td>${fmt(r.m,2)}</td><td>${fmt(r.W,1)}</td><td>${fmt(r.d*100,1)}</td><td>${fmt(r.M,1)}</td></tr>`).join('')+
+    `<tr><td><b>Total</b></td><td>${fmt(R.rows.reduce((a,r)=>a+r.m,0),2)}</td><td>${fmt(R.rows.reduce((a,r)=>a+r.W,0),1)}</td><td></td><td><b>${fmt(R.Mtot,1)}</b></td></tr></tbody>`;
+  window._R=R; renderCmp(); exportText();
+}
+function snap(R){ return {theta:R.theta*180/Math.PI, knee:R.knee, dBody:R.dBody*100, dLoad:R.dLoad*100, Mbody:R.Mbody, Mload:R.Mload, Mtot:R.Mtot, Fm:R.Fm, Fc:R.Fc, Fs:R.Fs, mB:+$('mBody').value, mL:+$('mLoad').value}; }
+$('saveA').onclick=()=>{ if(window._R){saved.A=snap(window._R); renderCmp(); exportText();} };
+$('saveB').onclick=()=>{ if(window._R){saved.B=snap(window._R); renderCmp(); exportText();} };
+function renderCmp(){
+  const c=$('cmp'), t=$('cmpTbl');
+  const cur = window._R? snap(window._R):null;
+  const rows=[['A',saved.A],['B',saved.B]].filter(r=>r[1]);
+  if(!rows.length){ c.innerHTML=`<p class="note" style="margin:0">Guardá la postura actual como A, cargá otra foto (o mové los puntos) y guardala como B para compararlas.</p>`; t.innerHTML=''; return; }
+  const max=8000;
+  c.innerHTML = rows.map(([n,s])=>{ const [cls]=classify(s.Fc); const col=cls==='v-ok'?'var(--ok)':cls==='v-warn'?'var(--warn)':'var(--bad)';
+    return `<div class="bar-row"><span>Postura ${n}</span><div class="bar-track"><div class="bar-fill" style="width:${Math.min(100,s.Fc/max*100)}%;background:${col}"></div><span class="lim" style="left:42.5%"></span><span class="lim" style="left:80%"></span></div><span class="v">${fmt(s.Fc)} N</span></div>`; }).join('')
+    + `<p class="note" style="margin:0">Líneas punteadas: 3400 N y 6400 N (NIOSH).</p>`;
+  const f=(k,d)=>rows.map(([,s])=>`<td>${s[k]==null?'—':fmt(s[k],d)}</td>`).join('');
+  let diff=''; if(saved.A&&saved.B){ diff=`<tr><td>Diferencia en F<sub>c</sub> (B − A)</td><td colspan="2">${fmt(saved.B.Fc-saved.A.Fc)} N (${fmt((saved.B.Fc/saved.A.Fc-1)*100,0)} %)</td></tr>`; }
+  t.innerHTML = `<thead><tr><th></th>${rows.map(([n])=>`<th>Postura ${n}</th>`).join('')}</tr></thead><tbody>
+    <tr><td>θ tronco (°)</td>${f('theta',1)}</tr><tr><td>Rodilla (°)</td>${f('knee',0)}</tr>
+    <tr><td>Brazo carga (cm)</td>${f('dLoad',1)}</tr><tr><td>Momento total (N·m)</td>${f('Mtot',1)}</tr>
+    <tr><td>F erectores (N)</td>${f('Fm',0)}</tr><tr><td>Compresión (N)</td>${f('Fc',0)}</tr>${diff}</tbody>`;
+}
+function exportText(){
+  const R=window._R; if(!R){$('out').value='';return;}
+  const n=(v,d=2)=>isFinite(v)?v.toFixed(d).replace('.',','):'';
+  let s=`Masa corporal (kg)\t${n(+$('mBody').value,1)}\nMasa carga (kg)\t${n(+$('mLoad').value,1)}\nSexo\t${$('sex').value}\nBrazo erectores (cm)\t${n(+$('dMus').value,1)}\n\n`;
+  s+=`Segmento\tMasa (kg)\tPeso (N)\tBrazo (cm)\tMomento (N·m)\n`;
+  R.rows.forEach(r=>s+=`${r.name}\t${n(r.m)}\t${n(r.W,1)}\t${n(r.d*100,1)}\t${n(r.M,1)}\n`);
+  s+=`\nθ tronco (°)\t${n(R.theta*180/Math.PI,1)}\nÁngulo rodilla (°)\t${R.knee==null?'':n(R.knee,0)}\nMomento total (N·m)\t${n(R.Mtot,1)}\nF erectores (N)\t${n(R.Fm,0)}\nCompresión (N)\t${n(R.Fc,0)}\nCorte (N)\t${n(R.Fs,0)}\n`;
+  if(saved.A||saved.B){ s+=`\nComparación\tA\tB\n`; [['θ (°)','theta',1],['Momento (N·m)','Mtot',1],['F erectores (N)','Fm',0],['Compresión (N)','Fc',0]].forEach(([l,k,d])=>s+=`${l}\t${saved.A?n(saved.A[k],d):''}\t${saved.B?n(saved.B[k],d):''}\n`); }
+  $('out').value=s;
+}
+$('btnCopy').onclick=async()=>{ const t=$('out'); try{ await navigator.clipboard.writeText(t.value); $('copyMsg').textContent='Copiado. Pegalo en Excel con Ctrl+V.'; }catch(e){ t.focus(); t.select(); $('copyMsg').textContent='Seleccioné el texto: copialo con Ctrl+C.'; } };
+
+// parámetros
+function renderPar(){
+  $('parTbl').innerHTML = `<thead><tr><th>Segmento</th><th>Extremos</th><th>% masa</th><th>% CM</th></tr></thead><tbody>`+
+    SEGS.map(sg=>`<tr><td>${sg.name}</td><td style="font-family:var(--f-body)">${POINTS.find(p=>p.id===sg.a).name.split(' (')[0]} → ${POINTS.find(p=>p.id===sg.b).name.split(' (')[0]}</td>
+      <td><input id="p_${sg.id}_m" type="number" step="0.01" value="${params[sg.id][0]}" aria-label="% masa ${sg.name}"></td>
+      <td><input id="p_${sg.id}_c" type="number" step="0.01" value="${params[sg.id][1]}" aria-label="% CM ${sg.name}"></td></tr>`).join('')+'</tbody>';
+  SEGS.forEach(sg=>{ $(`p_${sg.id}_m`).oninput=e=>{params[sg.id][0]=+e.target.value||0; update();}; $(`p_${sg.id}_c`).oninput=e=>{params[sg.id][1]=+e.target.value||0; update();}; });
+}
+function setSex(s){ params=JSON.parse(JSON.stringify(DELEVA[s])); renderPar(); }
+$('sex').onchange=e=>{ setSex(e.target.value); update(); };
+$('parReset').onclick=()=>{ setSex($('sex').value); update(); };
+['mBody','mLoad','refLen','dMus','facing','bilat'].forEach(id=>$(id).addEventListener('input',update));
+$('facing').addEventListener('change',update);
+
+// archivo
+$('file').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader();
+  r.onload=()=>{ const im=new Image(); im.onload=()=>{ img=im; imgW=im.naturalWidth; imgH=im.naturalHeight; isDemo=false; pts={}; active='cal1'; $('modeTag').hidden=true; sizeCanvas(); update(); }; im.src=r.result; };
+  r.readAsDataURL(f); e.target.value=''; };
+$('btnDemo').onclick=loadDemo;
+$('btnReset').onclick=()=>{ pts={}; active='cal1'; update(); };
+$('btnClearPt').onclick=()=>{ if(active&&pts[active]) delete pts[active]; else if(!active){} update(); };
+window.addEventListener('resize',()=>{ sizeCanvas(); update(); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{ if(isDemo){ const p=pts; img=demoImage(); img.onload=()=>{pts=p; update();}; } else update(); });
+
+renderPar(); loadDemo();
+})();
+</script>
+</body>
+</html>
