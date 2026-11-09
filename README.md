@@ -15,8 +15,15 @@ Herramienta web para estimar la carga mecánica sobre la articulación lumbosacr
    - el momento en L5-S1, la fuerza de los erectores, la compresión y la fuerza de corte;
    - la clasificación de riesgo según NIOSH (3400 N / 6400 N).
 5. Permite guardar dos posturas (A y B), compararlas y copiar los resultados para pegarlos en Excel.
+6. **Video cuadro a cuadro**: se carga un video, se marcan los puntos en un cuadro y se avanza con ▶ (o la flecha →). Los puntos se copian al cuadro siguiente para solo ajustar los que se movieron. Se obtiene el gráfico de la compresión a lo largo del tiempo, el pico y la tabla de todos los cuadros para Excel. Cada cuadro se calcula como una foto (análisis cuasi-estático, sin aceleraciones). Los cuadros por segundo del video se ingresan a mano (el navegador no los informa).
 
-La foto se procesa solo en el navegador; no se sube a ningún servidor.
+La foto y el video se procesan solo en el navegador; no se suben a ningún servidor.
+
+7. **Detección automática (MediaPipe)**: se marcan a mano 3 o 4 cuadros de calibración y la página detecta la pose en el resto del video. L5-S1, C7, vértex y la carga (que MediaPipe no detecta) se ubican con la relación medida en los cuadros de calibración del propio sujeto. La página muestra la validación: error en cm de cada punto y diferencia de compresión entre lo automático y lo marcado a mano. Requiere internet la primera vez para descargar el detector (≈ 20 MB); el video igual se procesa solo en la computadora.
+
+8. **La carga solo se suma cuando la persona la sostiene.** En una foto, con la casilla "Sostiene la carga". En un video, marcando el intervalo de agarre con "Agarra la carga aquí" y "Suelta la carga aquí" (se ve como una franja en el gráfico). Fuera de ese intervalo, el peso y el momento de la carga valen 0 (por ejemplo, cuando la persona se agacha a acomodar la caja sin levantarla).
+
+**Hoja de ruta:** el objetivo final es usar el modelo con la cámara en vivo (ver `CLAUDE.md`).
 
 ## Cómo usarla
 
