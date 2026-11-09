@@ -93,6 +93,29 @@ td input{width:4.8em;padding:3px 5px;text-align:right}
 .bar-row .v{font-family:var(--f-mono);text-align:right;font-variant-numeric:tabular-nums}
 textarea{width:100%;font:.8rem var(--f-mono);background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px;min-height:90px}
 .tag{display:inline-block;font:600 .72rem var(--f-display);letter-spacing:.06em;text-transform:uppercase;background:var(--accent-soft);color:var(--accent);border-radius:4px;padding:2px 6px;vertical-align:middle}
+/* Video cuadro a cuadro */
+.vbar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px}
+.vbar input[type=range]{flex:1 1 160px;padding:0;background:none;border:0;accent-color:var(--accent)}
+.vinfo{font:400 .82rem var(--f-mono);color:var(--muted);white-space:nowrap;min-width:34ch} /* ancho fijo: que no se corra la barra al cambiar el texto */
+.vopts{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:10px}
+.vopts label.f{width:10em}
+.chart svg{display:block;max-width:100%;font:400 11px var(--f-mono)}
+.chart .b-ok{fill:var(--ok-bg)} .chart .b-warn{fill:var(--warn-bg)} .chart .b-bad{fill:var(--bad-bg)}
+.chart .gl{stroke:var(--line);stroke-width:1}
+.chart .lm{stroke:var(--muted);stroke-dasharray:5 4;stroke-width:1.5}
+.chart .tk{fill:var(--muted)}
+.chart .now{stroke:var(--ink);stroke-opacity:.5;stroke-width:1.5}
+.chart .curve{fill:none;stroke:var(--accent);stroke-width:2}
+.chart circle{fill:var(--surface);stroke:var(--accent);stroke-width:2;cursor:pointer}
+.chart circle.cur{fill:var(--accent)}
+.chart circle.peak{stroke:var(--bad);stroke-width:3}
+.chart .peaklbl{fill:var(--bad);font-weight:600}
+.chart .grip{fill:var(--load);fill-opacity:.14}
+.chart .griplbl{fill:var(--load);font-weight:600}
+.chart circle.man{stroke:var(--load)}
+.chart circle.man.cur{fill:var(--load)}
+.steps{margin:0;padding-left:1.3em;font-size:.93rem;display:flex;flex-direction:column;gap:4px}
+button.on{background:var(--load);border-color:var(--load);color:var(--surface)}
 footer{margin-top:20px;color:var(--muted);font-size:.82rem;max-width:90ch}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -112,10 +135,31 @@ footer{margin-top:20px;color:var(--muted);font-size:.82rem;max-width:90ch}
     <!-- Columna izquierda: lienzo -->
     <section class="panel" aria-label="Foto y puntos">
       <div class="toolbar">
-        <label class="filebtn primary">Cargar foto<input type="file" id="file" accept="image/*"></label>
+        <label class="filebtn primary">Cargar foto o video<input type="file" id="file" accept="image/*,video/*"></label>
         <button id="btnDemo" type="button">Ver ejemplo</button>
         <button id="btnClearPt" type="button">Borrar punto activo</button>
         <button id="btnReset" type="button">Borrar todos los puntos</button>
+      </div>
+      <!-- Controles de video (solo visibles con un video cargado) -->
+      <div class="vbar" id="vbar" hidden>
+        <button id="vPrev" type="button" aria-label="Retroceder cuadros">◀</button>
+        <input id="vSlider" type="range" min="0" max="0" step="1" value="0" aria-label="Cuadro del video">
+        <button id="vNext" type="button" aria-label="Avanzar cuadros">▶</button>
+        <button id="vPlay" type="button" class="primary">▶ Reproducir</button>
+        <select id="vSpeed" aria-label="Velocidad de reproducción" style="width:auto"><option value="0.25">¼×</option><option value="0.5" selected>½×</option><option value="1">1×</option></select>
+        <span class="vinfo" id="vInfo"></span>
+      </div>
+      <div class="vopts" id="vopts" hidden>
+        <label class="f">Cuadros por segundo<input id="vFps" type="number" min="1" step="1" value="30"></label>
+        <label class="f">Avanzar de a (cuadros)<input id="vStep" type="number" min="1" step="1" value="5"></label>
+        <button id="vCopy" type="button">Traer puntos del cuadro marcado anterior</button>
+        <button id="vCal" type="button">Usar este cuadro para calibrar</button>
+      </div>
+      <div class="vopts" id="gripBar" hidden>
+        <button id="gStart" type="button">Agarra la carga aquí</button>
+        <button id="gEnd" type="button">Suelta la carga aquí</button>
+        <button id="gClear" type="button">Borrar agarre</button>
+        <span class="note" id="gInfo" style="margin:0;align-self:center"></span>
       </div>
       <div class="hint" id="hint" aria-live="polite"></div>
       <div class="canvas-box"><canvas id="cv" width="800" height="1000" aria-label="Foto con los puntos marcados"></canvas></div>
@@ -136,6 +180,7 @@ footer{margin-top:20px;color:var(--muted);font-size:.82rem;max-width:90ch}
           <label class="f">Mira hacia<select id="facing"><option value="auto">Automático</option><option value="R">Derecha</option><option value="L">Izquierda</option></select></label>
         </div>
         <label class="check" style="margin-top:10px"><input type="checkbox" id="bilat" checked> Contar los dos brazos (simetría en 2D)</label>
+        <label class="check" id="holdRow" style="margin-top:4px"><input type="checkbox" id="holdChk" checked> Sostiene la carga (si no, la carga no se suma)</label>
       </section>
 
       <section class="panel" aria-label="Resultado">
@@ -160,6 +205,31 @@ footer{margin-top:20px;color:var(--muted);font-size:.82rem;max-width:90ch}
       </section>
     </div>
   </div>
+
+  <section class="panel" style="margin-top:16px" id="autoPanel" aria-label="Detección automática" hidden>
+    <h2>Detección automática de la pose (MediaPipe)</h2>
+    <ol class="steps">
+      <li>Elegí <b>3 o 4 cuadros bien distintos</b> (parado, bajando, abajo de todo, subiendo). En cada uno marcá <b>todos</b> los puntos a mano y tocá <b>“Usar este cuadro para calibrar”</b>.</li>
+      <li>Tocá <b>“Analizar el video”</b>. MediaPipe detecta hombro, codo, muñeca, mano, cadera, rodilla y tobillo en cada cuadro. L5-S1, C7, vértex y la carga se ubican con la relación medida en tus cuadros de calibración.</li>
+      <li>Revisá la validación de abajo. Si un cuadro quedó mal, corregilo arrastrando los puntos: pasa a contar como marcado a mano.</li>
+    </ol>
+    <div class="toolbar" style="margin-top:10px">
+      <button type="button" class="primary" id="aRun">Analizar el video</button>
+      <button type="button" id="aStop" hidden>Detener</button>
+      <label class="f" style="width:11em">Analizar 1 de cada (cuadros)<input id="aStep" type="number" min="1" step="1" value="2"></label>
+    </div>
+    <p class="note" id="aMsg" aria-live="polite" style="margin-top:0"></p>
+    <div id="aRes"></div>
+    <p class="note">El detector se descarga de internet la primera vez (≈ 20 MB) y después corre en tu computadora: el video no se envía a ningún lado.</p>
+  </section>
+
+  <section class="panel" style="margin-top:16px" id="vidPanel" aria-label="Evolución en el video" hidden>
+    <h2>Compresión a lo largo del video</h2>
+    <div class="chart" id="vChart"></div>
+    <dl class="kv" id="vSum"></dl>
+    <div class="toolbar" style="margin-top:12px;margin-bottom:0"><button type="button" id="vPeak">Ir al cuadro del pico</button></div>
+    <p class="note">Cada punto es un cuadro con todos los puntos marcados, calculado igual que una foto (análisis cuasi-estático: no incluye aceleraciones). Borde naranja = cuadro marcado a mano; celeste = detectado automáticamente. Tocá un punto del gráfico para ir a ese cuadro. Bandas: verde &lt; 3400 N, ámbar 3400–6400 N, rojo &gt; 6400 N (NIOSH).</p>
+  </section>
 
   <div class="grid" style="margin-top:16px">
     <section class="panel" aria-label="Detalle por segmento">
@@ -240,6 +310,18 @@ let img = null, imgW = 800, imgH = 1000, isDemo = true;
 let pts = {}; let active = 'cal1'; let drag = null;
 let saved = {A:null, B:null};
 const $ = id => document.getElementById(id);
+// Video: cada cuadro marcado guarda sus propios puntos en frames[númeroDeCuadro]
+let video = null, isVideo = false, frames = {}, cur = 0, nFrames = 1;
+// autoSet: cuadros cuyos puntos puso MediaPipe · calSet: cuadros elegidos para calibrar (marcados a mano)
+let autoSet = new Set(), calSet = new Set(), busy = false;
+// Intervalo de agarre: cuadros en los que la persona SOSTIENE la carga. Sin marcar = todo el video.
+let grip = {start:null, end:null};
+function holdAt(i){
+  if(grip.start==null && grip.end==null) return true;
+  return i >= (grip.start ?? 0) && i <= (grip.end ?? Infinity);
+}
+const fps  = () => Math.max(1, +$('vFps').value||30);
+const step = () => Math.max(1, Math.round(+$('vStep').value||1));
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 
 // ---------- Escena de ejemplo ----------
@@ -268,6 +350,7 @@ function demoImage(){
   const im = new Image(); im.src = c.toDataURL(); return im;
 }
 function loadDemo(){
+  leaveVideo();
   img = demoImage(); imgW=800; imgH=1000; isDemo=true;
   pts = {}; for(const k in DEMO_PTS) pts[k]=[...DEMO_PTS[k]];
   $('mBody').value=78; $('mLoad').value=15; $('refLen').value=32; $('sex').value='M'; setSex('M');
@@ -290,29 +373,41 @@ function sizeCanvas(){
 function toImg(e){ const r=cv.getBoundingClientRect(); return [(e.clientX-r.left)/k, (e.clientY-r.top)/k]; }
 function hit(p){ const R=14/k; let best=null,bd=R; for(const id in pts){ const d=Math.hypot(pts[id][0]-p[0],pts[id][1]-p[1]); if(d<bd){bd=d;best=id;} } return best; }
 cv.addEventListener('pointerdown',e=>{
+  if(playing){ $('vPlay').click(); return; } // durante la reproducción, un clic en la foto pausa
   const p=toImg(e); const h=hit(p);
   if(h && h!==active){ drag=h; cv.setPointerCapture(e.pointerId); return; }
-  if(active){ pts[active]=p; drag=active; cv.setPointerCapture(e.pointerId); advance(); update(); }
+  if(active){ pts[active]=p; if(isVideo){ frames[cur]=pts; autoSet.delete(cur); } drag=active; cv.setPointerCapture(e.pointerId); advance(); update(); }
 });
-cv.addEventListener('pointermove',e=>{ if(!drag) return; pts[drag]=toImg(e); update(); });
+// si se corrige un cuadro automático, pasa a contar como marcado a mano
+cv.addEventListener('pointermove',e=>{ if(!drag) return; pts[drag]=toImg(e); if(isVideo) autoSet.delete(cur); update(); });
 cv.addEventListener('pointerup',()=>{ drag=null; });
 function advance(){ const next = POINTS.find(p=>!pts[p.id]); active = next?next.id:null; }
 
 // ---------- Modelo ----------
-function compute(){
+// Lee los datos del formulario (masas, referencia, brazo de los erectores, etc.)
+function readInputs(){
+  return {Mb:+$('mBody').value||0, Ml:+$('mLoad').value||0, Lref:(+$('refLen').value||0)/100, dm:(+$('dMus').value||0)/100,
+    facing:$('facing').value, bilat:$('bilat').checked, params,
+    hold: isVideo ? holdAt(cur) : $('holdChk').checked}; // ¿sostiene la carga? (video: según el intervalo de agarre)
+}
+// Calcula con los puntos marcados en pantalla (foto o cuadro actual del video)
+function compute(){ return calcModel(pts, readInputs()); }
+// MODELO BIOMECÁNICO. Función "pura": recibe los puntos P (en px de la imagen) y los datos inp,
+// y devuelve los resultados. No lee ni modifica la página, así sirve igual para una foto,
+// para cada cuadro de un video o (más adelante) para los puntos que detecte la cámara.
+function calcModel(P, inp){
   const need=['cal1','cal2','l5','c7','vert','sho','elb','wri','hand'];
-  const missing = need.filter(id=>!pts[id]);
-  const Mb = +$('mBody').value||0, Ml = +$('mLoad').value||0, Lref=(+$('refLen').value||0)/100, dm=(+$('dMus').value||0)/100;
+  const missing = need.filter(id=>!P[id]);
+  const {Mb, Ml, Lref, dm, params} = inp;
   if(missing.length || !Lref || !dm) return {ok:false, missing};
-  const s = Lref / Math.hypot(pts.cal2[0]-pts.cal1[0], pts.cal2[1]-pts.cal1[1]); // m por px
+  const s = Lref / Math.hypot(P.cal2[0]-P.cal1[0], P.cal2[1]-P.cal1[1]); // m por px
   if(!isFinite(s)) return {ok:false, missing:['cal2']};
-  const W = id => [pts[id][0]*s, -pts[id][1]*s]; // eje y hacia arriba
+  const W = id => [P[id][0]*s, -P[id][1]*s]; // eje y hacia arriba
   const L5 = W('l5');
   let dir;
-  const f=$('facing').value;
-  if(f==='R') dir=1; else if(f==='L') dir=-1;
-  else { const ref = pts.load? W('load') : W('c7'); dir = (ref[0]-L5[0])>=0?1:-1; }
-  const bil = $('bilat').checked;
+  if(inp.facing==='R') dir=1; else if(inp.facing==='L') dir=-1;
+  else { const ref = P.load? W('load') : W('c7'); dir = (ref[0]-L5[0])>=0?1:-1; }
+  const bil = inp.bilat;
   const rows=[]; let Msum=0, Wsup=0, xw=0;
   for(const sg of SEGS){
     const [pct,cm]=params[sg.id]; const A=W(sg.a), B=W(sg.b);
@@ -322,26 +417,29 @@ function compute(){
     Msum+=Mo; Wsup+=Wt; xw+=Wt*d;
   }
   let dLoad=0, Wl=Ml*G, Mload=0;
-  if(pts.load){ const Lp=W('load'); dLoad=(Lp[0]-L5[0])*dir; Mload=Wl*dLoad; rows.push({name:'Carga', m:Ml, d:dLoad, M:Mload, px:[...pts.load], W:Wl, load:true}); }
+  // La carga solo se suma si la persona la SOSTIENE (inp.hold). Si está marcada pero apoyada, no cuenta.
+  const held = !!P.load && inp.hold!==false;
+  if(held){ const Lp=W('load'); dLoad=(Lp[0]-L5[0])*dir; Mload=Wl*dLoad; rows.push({name:'Carga', m:Ml, d:dLoad, M:Mload, px:[...P.load], W:Wl, load:true}); }
   const Mbody=Msum, Mtot=Msum+Mload;
   const dBody = xw/Wsup;
   const C7=W('c7'); const theta = Math.atan2((C7[0]-L5[0])*dir, C7[1]-L5[1]); // rad, + = flexión
   const Fm = Math.max(0,Mtot)/dm;
-  const Wtot = Wsup+(pts.load?Wl:0);
+  const Wtot = Wsup+(held?Wl:0);
   const Fc = Fm + Wtot*Math.cos(theta);
   const Fs = Wtot*Math.sin(theta);
   let knee=null;
-  if(pts.hip&&pts.knee&&pts.ank){ const a=[pts.hip[0]-pts.knee[0],pts.hip[1]-pts.knee[1]], b=[pts.ank[0]-pts.knee[0],pts.ank[1]-pts.knee[1]];
+  if(P.hip&&P.knee&&P.ank){ const a=[P.hip[0]-P.knee[0],P.hip[1]-P.knee[1]], b=[P.ank[0]-P.knee[0],P.ank[1]-P.knee[1]];
     knee = Math.acos((a[0]*b[0]+a[1]*b[1])/(Math.hypot(...a)*Math.hypot(...b)))*180/Math.PI; }
   // CM del cuerpo superior (px imagen)
   let cx=0,cy=0; rows.filter(r=>!r.load).forEach(r=>{cx+=r.W*r.px[0]; cy+=r.W*r.px[1];}); cx/=Wsup; cy/=Wsup;
-  return {ok:true, s, dir, rows, Mbody, Mload, Mtot, dBody, dLoad, theta, Fm, Fc, Fs, knee, Wsup, Wl, cmSup:[cx,cy], noLoad:!pts.load, negM:Mtot<0};
+  return {ok:true, s, dir, rows, Mbody, Mload, Mtot, dBody, dLoad, theta, Fm, Fc, Fs, knee, Wsup, Wl, cmSup:[cx,cy], noLoad:!held, notHeld:!!P.load && !held, negM:Mtot<0};
 }
 
 // ---------- Dibujo ----------
 function draw(R){
   ctx.clearRect(0,0,imgW,imgH);
-  if(img && img.complete) ctx.drawImage(img,0,0,imgW,imgH);
+  if(isVideo){ if(video && video.readyState>=2) ctx.drawImage(video,0,0,imgW,imgH); }
+  else if(img && img.complete) ctx.drawImage(img,0,0,imgW,imgH);
   const acc=css('--accent'), load=css('--load'), ink=css('--ink');
   const lw = 2/k, fs = 13/k;
   ctx.font = `600 ${fs}px "IBM Plex Mono", monospace`;
@@ -362,14 +460,14 @@ function draw(R){
     arm(cs, L5[0], acc, `${(R.dBody*100).toFixed(1)} cm`);
     ctx.fillStyle=css('--surface'); ctx.strokeStyle=acc; ctx.lineWidth=2.5/k; ctx.beginPath(); ctx.arc(cs[0],cs[1],8/k,0,7); ctx.fill(); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(cs[0]-8/k,cs[1]); ctx.lineTo(cs[0]+8/k,cs[1]); ctx.moveTo(cs[0],cs[1]-8/k); ctx.lineTo(cs[0],cs[1]+8/k); ctx.stroke();
-    if(pts.load) arm(pts.load, L5[0], load, `${(R.dLoad*100).toFixed(1)} cm`);
+    if(pts.load && !R.noLoad) arm(pts.load, L5[0], load, `${(R.dLoad*100).toFixed(1)} cm`); // brazo de la carga solo si la sostiene
     // ángulo tronco
     label(`θ ${(R.theta*180/Math.PI).toFixed(0)}°`, L5[0]-62/k, L5[1]+30/k, ink);
     if(R.knee!=null && pts.knee) label(`${R.knee.toFixed(0)}°`, pts.knee[0]-58/k, pts.knee[1]+5/k, ink);
   }
   // marcadores
   for(const p of POINTS){ const q=pts[p.id]; if(!q) continue;
-    const isL = p.id==='load', isCal=p.grp==='cal', c = isL?load:isCal?'#d6336c':acc;
+    const isL = p.id==='load', isCal=p.grp==='cal', c = isL?(R&&R.notHeld?css('--muted'):load):isCal?'#d6336c':acc; // carga no sostenida: gris
     ctx.fillStyle=css('--surface'); ctx.strokeStyle=c; ctx.lineWidth=2.5/k;
     ctx.beginPath(); ctx.arc(q[0],q[1],(p.id===active?8:6)/k,0,7); ctx.fill(); ctx.stroke();
     ctx.fillStyle=c; ctx.beginPath(); ctx.arc(q[0],q[1],2/k,0,7); ctx.fill();
@@ -395,8 +493,17 @@ function update(){
   if(!R.ok){
     v.className='verdict v-none'; $('fcBig').textContent='—';
     $('fcLbl').textContent = 'Faltan puntos: '+R.missing.map(id=>POINTS.find(p=>p.id===id)?.name||id).join(', ');
-    $('meterMark').style.left='0'; kv.innerHTML=''; $('segTbl').innerHTML=''; $('out').value=''; window._R=null; renderCmp(); return;
+    $('meterMark').style.left='0'; kv.innerHTML=''; $('segTbl').innerHTML=''; window._R=null; renderCmp(); renderVideo(); exportText(); return;
   }
+  renderMain(R);
+  $('segTbl').innerHTML = `<thead><tr><th>Segmento</th><th>Masa (kg)</th><th>Peso (N)</th><th>Brazo (cm)</th><th>Momento (N·m)</th></tr></thead><tbody>`+
+    R.rows.map(r=>`<tr><td>${r.name}</td><td>${fmt(r.m,2)}</td><td>${fmt(r.W,1)}</td><td>${fmt(r.d*100,1)}</td><td>${fmt(r.M,1)}</td></tr>`).join('')+
+    `<tr><td><b>Total</b></td><td>${fmt(R.rows.reduce((a,r)=>a+r.m,0),2)}</td><td>${fmt(R.rows.reduce((a,r)=>a+r.W,0),1)}</td><td></td><td><b>${fmt(R.Mtot,1)}</b></td></tr></tbody>`;
+  window._R=R; renderCmp(); renderVideo(); exportText();
+}
+// Panel "Compresión en L5-S1": número grande, color NIOSH, barra y valores
+function renderMain(R){
+  const v=$('verdict'), kv=$('kv');
   const [cls,lbl]=classify(R.Fc);
   v.className='verdict '+cls; $('fcBig').textContent = fmt(R.Fc)+' N'; $('fcLbl').textContent=lbl;
   $('meterMark').style.left = Math.min(100,R.Fc/8000*100)+'%';
@@ -407,7 +514,7 @@ function update(){
     <dt>Tipo de levantamiento (orientativo)</dt><dd style="font-family:var(--f-body)">${post}</dd>
     <div class="sep"></div>
     <dt>Brazo de palanca del cuerpo</dt><dd>${fmt(R.dBody*100,1)} cm</dd>
-    <dt>Brazo de palanca de la carga</dt><dd>${R.noLoad?'sin carga':fmt(R.dLoad*100,1)+' cm'}</dd>
+    <dt>Brazo de palanca de la carga</dt><dd style="font-family:var(--f-mono)">${R.notHeld?'no la sostiene':R.noLoad?'sin carga':fmt(R.dLoad*100,1)+' cm'}</dd>
     <dt>Momento del cuerpo</dt><dd>${fmt(R.Mbody,1)} N·m</dd>
     <dt>Momento de la carga</dt><dd>${fmt(R.Mload,1)} N·m</dd>
     <dt><b>Momento total en L5-S1</b></dt><dd><b>${fmt(R.Mtot,1)} N·m</b></dd>
@@ -416,10 +523,6 @@ function update(){
     <dt>Compresión F<sub>c</sub></dt><dd>${fmt(R.Fc)} N</dd>
     <dt>Fuerza de corte</dt><dd>${fmt(R.Fs)} N</dd>
     ${R.negM?'<dt style="grid-column:1/-1;color:var(--warn)">El momento es extensor (el peso cae detrás de L5-S1); se toma F<sub>m</sub> = 0.</dt>':''}`;
-  $('segTbl').innerHTML = `<thead><tr><th>Segmento</th><th>Masa (kg)</th><th>Peso (N)</th><th>Brazo (cm)</th><th>Momento (N·m)</th></tr></thead><tbody>`+
-    R.rows.map(r=>`<tr><td>${r.name}</td><td>${fmt(r.m,2)}</td><td>${fmt(r.W,1)}</td><td>${fmt(r.d*100,1)}</td><td>${fmt(r.M,1)}</td></tr>`).join('')+
-    `<tr><td><b>Total</b></td><td>${fmt(R.rows.reduce((a,r)=>a+r.m,0),2)}</td><td>${fmt(R.rows.reduce((a,r)=>a+r.W,0),1)}</td><td></td><td><b>${fmt(R.Mtot,1)}</b></td></tr></tbody>`;
-  window._R=R; renderCmp(); exportText();
 }
 function snap(R){ return {theta:R.theta*180/Math.PI, knee:R.knee, dBody:R.dBody*100, dLoad:R.dLoad*100, Mbody:R.Mbody, Mload:R.Mload, Mtot:R.Mtot, Fm:R.Fm, Fc:R.Fc, Fs:R.Fs, mB:+$('mBody').value, mL:+$('mLoad').value}; }
 $('saveA').onclick=()=>{ if(window._R){saved.A=snap(window._R); renderCmp(); exportText();} };
@@ -441,9 +544,15 @@ function renderCmp(){
     <tr><td>F erectores (N)</td>${f('Fm',0)}</tr><tr><td>Compresión (N)</td>${f('Fc',0)}</tr>${diff}</tbody>`;
 }
 function exportText(){
-  const R=window._R; if(!R){$('out').value='';return;}
+  const R=window._R;
   const n=(v,d=2)=>isFinite(v)?v.toFixed(d).replace('.',','):'';
-  let s=`Masa corporal (kg)\t${n(+$('mBody').value,1)}\nMasa carga (kg)\t${n(+$('mLoad').value,1)}\nSexo\t${$('sex').value}\nBrazo erectores (cm)\t${n(+$('dMus').value,1)}\n\n`;
+  let s='';
+  if(isVideo){ const list=videoResults(); if(list.length){
+    s+=`Video cuadro a cuadro (${n(fps(),0)} cuadros/s)\nCuadro\tTiempo (s)\tθ tronco (°)\tRodilla (°)\tMomento total (N·m)\tF erectores (N)\tCompresión (N)\tCorte (N)\tSostiene la carga\n`;
+    list.forEach(p=>s+=`${p.i}\t${n(p.t,3)}\t${n(p.R.theta*180/Math.PI,1)}\t${p.R.knee==null?'':n(p.R.knee,0)}\t${n(p.R.Mtot,1)}\t${n(p.R.Fm,0)}\t${n(p.R.Fc,0)}\t${n(p.R.Fs,0)}\t${p.hold?'sí':'no'}\n`);
+    s+=`\nCuadro actual (${cur})\n`; } }
+  if(!R){ $('out').value=s; return; }
+  s+=`Masa corporal (kg)\t${n(+$('mBody').value,1)}\nMasa carga (kg)\t${n(+$('mLoad').value,1)}\nSexo\t${$('sex').value}\nBrazo erectores (cm)\t${n(+$('dMus').value,1)}\nSostiene la carga\t${readInputs().hold?'sí':'no'}\n\n`;
   s+=`Segmento\tMasa (kg)\tPeso (N)\tBrazo (cm)\tMomento (N·m)\n`;
   R.rows.forEach(r=>s+=`${r.name}\t${n(r.m)}\t${n(r.W,1)}\t${n(r.d*100,1)}\t${n(r.M,1)}\n`);
   s+=`\nθ tronco (°)\t${n(R.theta*180/Math.PI,1)}\nÁngulo rodilla (°)\t${R.knee==null?'':n(R.knee,0)}\nMomento total (N·m)\t${n(R.Mtot,1)}\nF erectores (N)\t${n(R.Fm,0)}\nCompresión (N)\t${n(R.Fc,0)}\nCorte (N)\t${n(R.Fs,0)}\n`;
@@ -463,16 +572,389 @@ function renderPar(){
 function setSex(s){ params=JSON.parse(JSON.stringify(DELEVA[s])); renderPar(); }
 $('sex').onchange=e=>{ setSex(e.target.value); update(); };
 $('parReset').onclick=()=>{ setSex($('sex').value); update(); };
-['mBody','mLoad','refLen','dMus','facing','bilat'].forEach(id=>$(id).addEventListener('input',update));
+['mBody','mLoad','refLen','dMus','facing','bilat','holdChk'].forEach(id=>$(id).addEventListener('input',update));
 $('facing').addEventListener('change',update);
 
-// archivo
-$('file').onchange=e=>{ const f=e.target.files[0]; if(!f) return; const r=new FileReader();
-  r.onload=()=>{ const im=new Image(); im.onload=()=>{ img=im; imgW=im.naturalWidth; imgH=im.naturalHeight; isDemo=false; pts={}; active='cal1'; $('modeTag').hidden=true; sizeCanvas(); update(); }; im.src=r.result; };
-  r.readAsDataURL(f); e.target.value=''; };
+// archivo (foto o video)
+$('file').onchange=e=>{ const f=e.target.files[0]; if(!f) return; e.target.value='';
+  // es video si el sistema lo informa así o si la extensión es de video (algunos .mov/.mkv llegan sin tipo)
+  if(f.type.startsWith('video/') || /\.(mp4|m4v|mov|webm|mkv|avi|3gp)$/i.test(f.name)){ loadVideo(f); return; }
+  const r=new FileReader();
+  r.onload=()=>{ const im=new Image(); im.onload=()=>{ leaveVideo(); img=im; imgW=im.naturalWidth; imgH=im.naturalHeight; isDemo=false; pts={}; active='cal1'; $('modeTag').hidden=true; sizeCanvas(); update(); }; im.src=r.result; };
+  r.readAsDataURL(f); };
 $('btnDemo').onclick=loadDemo;
-$('btnReset').onclick=()=>{ pts={}; active='cal1'; update(); };
-$('btnClearPt').onclick=()=>{ if(active&&pts[active]) delete pts[active]; else if(!active){} update(); };
+function dropFrame(i){ delete frames[i]; autoSet.delete(i); calSet.delete(i); }
+$('btnReset').onclick=()=>{ pts={}; active='cal1'; if(isVideo) dropFrame(cur); update(); };
+$('btnClearPt').onclick=()=>{ if(active&&pts[active]) delete pts[active]; if(isVideo && !Object.keys(pts).length) dropFrame(cur); update(); };
+
+// ---------- Video cuadro a cuadro ----------
+// El video se abre en el navegador (URL local, no se sube). Se marca cuadro por cuadro y
+// cada cuadro se calcula con calcModel(), igual que una foto (cuasi-estático).
+function loadVideo(f){
+  const v=document.createElement('video'); v.muted=true; v.playsInline=true; v.preload='auto';
+  v.addEventListener('seeked',()=>{ if(v===video && !busy) update(); }); // al llegar al cuadro pedido, redibujar
+  // Algunos WebM no traen la duración: se fuerza a calcularla y, cuando llega, se recuenta los cuadros
+  v.addEventListener('durationchange',()=>{ if(v===video && isFinite(v.duration)){ setFrameCount(); goFrame(cur,false); } });
+  v.onerror=()=>{ URL.revokeObjectURL(v.src); alert('No se pudo abrir el video. Probá con un MP4 (H.264) o WebM.'); };
+  v.onloadeddata=()=>{
+    leaveVideo(); video=v; isVideo=true; isDemo=false; img=null;
+    imgW=v.videoWidth; imgH=v.videoHeight; frames={}; pts={}; active='cal1';
+    setFrameCount(); $('aMsg').textContent=''; $('aRes').innerHTML='';
+    $('vbar').hidden=$('vopts').hidden=$('vidPanel').hidden=$('autoPanel').hidden=$('gripBar').hidden=false;
+    $('holdRow').hidden=true; grip={start:null,end:null}; renderGrip();
+    $('btnReset').textContent='Borrar puntos de este cuadro';
+    $('modeTag').textContent='Video · cuadro a cuadro'; $('modeTag').hidden=false;
+    sizeCanvas(); goFrame(0,false);
+    if(!isFinite(v.duration)) v.currentTime=1e7; // ir "al final" obliga al navegador a medir la duración
+  };
+  v.src=URL.createObjectURL(f);
+}
+function leaveVideo(){
+  if(video){ playing=false; video.pause(); setPlayBtn(); URL.revokeObjectURL(video.src); video=null; }
+  isVideo=false; frames={}; cur=0; autoSet=new Set(); calSet=new Set(); stopAuto=true; lastCal=null;
+  $('vbar').hidden=$('vopts').hidden=$('vidPanel').hidden=$('autoPanel').hidden=$('gripBar').hidden=true;
+  $('holdRow').hidden=false; grip={start:null,end:null};
+  $('btnReset').textContent='Borrar todos los puntos';
+}
+function setFrameCount(){
+  const d=isFinite(video.duration)?video.duration:0;
+  nFrames=Math.max(1,Math.floor(d*fps())); $('vSlider').max=nFrames-1;
+}
+// Ir al cuadro i. Si ese cuadro no tiene puntos y carry=true, se copian los del cuadro actual
+// (así al avanzar solo se arrastran los puntos que se movieron).
+function goFrame(i, carry){
+  if(!isVideo) return;
+  if(playing) stopPlay(); // si se toca la barra o las flechas durante la reproducción, se pausa
+  i=Math.max(0,Math.min(nFrames-1,Math.round(i)));
+  const prev=pts, prevI=cur; cur=i;
+  if(frames[i]) pts=frames[i];
+  else if(carry && Object.keys(prev).length){ pts=JSON.parse(JSON.stringify(prev)); frames[i]=pts; if(autoSet.has(prevI)) autoSet.add(i); }
+  else pts={};
+  advance();
+  setInfo(i);
+  $('vCal').textContent = calSet.has(i)?'Quitar de la calibración':'Usar este cuadro para calibrar';
+  $('vCal').classList.toggle('on', calSet.has(i));
+  // se pide el centro del cuadro para no caer justo en el borde entre dos cuadros
+  video.currentTime=Math.min((i+0.5)/fps(), Math.max(0,video.duration-0.001));
+  update();
+}
+// Texto "cuadro X de N · tiempo · tipo" y posición de la barra
+function setInfo(i){
+  $('vSlider').value=i;
+  const kind = calSet.has(i)?' · calibración':autoSet.has(i)?' · automático':frames[i]?' · a mano':'';
+  $('vInfo').textContent=`cuadro ${i} de ${nFrames-1} · ${fmt(i/fps(),2)} s${kind}`;
+}
+
+// ---------- Reproducción continua ----------
+// El video corre normalmente y, en cada refresco de pantalla, se muestran los puntos del cuadro
+// analizado más cercano (si hay uno a menos de 0,15 s) y se recalculan los resultados.
+let playing=false;
+function setPlayBtn(){ $('vPlay').textContent = playing ? '⏸ Pausa' : '▶ Reproducir'; }
+function nearestFrame(i){
+  const tol=Math.max(1,Math.round(0.15*fps()));
+  for(let d=0; d<=tol; d++){ if(frames[i-d]) return i-d; if(frames[i+d]) return i+d; }
+  return null;
+}
+function playTick(){
+  if(!playing) return;
+  const i=Math.min(nFrames-1, Math.floor(video.currentTime*fps()));
+  const n=nearestFrame(i);
+  cur=i; active=null; setInfo(i);
+  // Actualización liviana: solo el dibujo, el panel de compresión y la línea del gráfico.
+  // (Rearmar todas las tablas 60 veces por segundo hacía "temblar" la página.)
+  if(n!=null){ pts=frames[n]; const R=compute(); draw(R); if(R.ok) renderMain(R); }
+  else { pts={}; draw(null); } // sin cuadro analizado cerca: solo el video; los números quedan como estaban
+  moveCursor();
+  if(video.ended){ stopPlay(); goFrame(nearestFrame(cur) ?? cur, false); return; }
+  requestAnimationFrame(playTick);
+}
+function startPlay(){
+  if(!isVideo || busy) return;
+  if(cur>=nFrames-1-Math.round(0.2*fps())) cur=0; // si estaba al final, arranca de nuevo
+  video.playbackRate=+$('vSpeed').value;
+  video.currentTime=cur/fps();
+  playing=true; setPlayBtn();
+  video.play().then(()=>requestAnimationFrame(playTick)).catch(()=>{ playing=false; setPlayBtn(); });
+}
+function stopPlay(){ playing=false; video.pause(); setPlayBtn(); }
+// al pausar, queda en el cuadro analizado más cercano (así se ven los resultados y se puede corregir)
+$('vPlay').onclick=()=>{ if(playing){ stopPlay(); goFrame(nearestFrame(cur) ?? cur, false); } else startPlay(); };
+$('vSpeed').onchange=()=>{ if(video) video.playbackRate=+$('vSpeed').value; };
+
+// ---------- Intervalo de agarre de la carga ----------
+function renderGrip(){
+  const s=grip.start, e=grip.end, t=i=>fmt(i/fps(),2)+' s';
+  $('gInfo').textContent = (s==null && e==null)
+    ? 'Agarre sin marcar: se considera que sostiene la carga todo el video.'
+    : `Sostiene la carga desde el cuadro ${s??0} (${t(s??0)}) hasta el ${e==null?'final':`${e} (${t(e)})`}.`;
+}
+$('gStart').onclick=()=>{ grip.start=cur; if(grip.end!=null && grip.end<cur) grip.end=null; renderGrip(); update(); };
+$('gEnd').onclick=()=>{
+  if(grip.start!=null && cur<grip.start){ alert('El cuadro donde suelta la carga tiene que ser posterior al cuadro donde la agarra.'); return; }
+  grip.end=cur; renderGrip(); update();
+};
+$('gClear').onclick=()=>{ grip={start:null,end:null}; renderGrip(); update(); };
+
+$('vNext').onclick=()=>goFrame(cur+step(),true);
+$('vPrev').onclick=()=>goFrame(cur-step(),false);
+$('vSlider').addEventListener('input',e=>goFrame(+e.target.value,false));
+$('vCopy').onclick=()=>{
+  const ks=Object.keys(frames).map(Number).filter(j=>j!==cur); if(!ks.length) return;
+  const before=ks.filter(j=>j<cur); const src=before.length?Math.max(...before):Math.min(...ks);
+  pts=JSON.parse(JSON.stringify(frames[src])); frames[cur]=pts; autoSet.delete(cur); advance(); update();
+};
+// Si se corrigen los cuadros por segundo, se conservan los cuadros marcados en el mismo instante de tiempo
+let lastFps=fps();
+$('vFps').addEventListener('change',()=>{
+  const nf=fps(), moved={}, re=i=>Math.round(i/lastFps*nf);
+  for(const i in frames) moved[re(i)]=frames[i];
+  frames=moved; autoSet=new Set([...autoSet].map(re)); calSet=new Set([...calSet].map(re));
+  if(grip.start!=null) grip.start=re(grip.start); if(grip.end!=null) grip.end=re(grip.end); renderGrip();
+  cur=re(cur); lastFps=nf;
+  if(isVideo){ setFrameCount(); goFrame(cur,false); }
+});
+// Flechas del teclado: ← → para retroceder / avanzar
+document.addEventListener('keydown',e=>{
+  if(!isVideo || e.target.closest('input,select,textarea')) return;
+  if(e.key===' '){ if(e.target.closest('button')) return; $('vPlay').click(); e.preventDefault(); } // espacio: reproducir / pausar
+  else if(e.key==='ArrowRight'){ goFrame(cur+step(),true); e.preventDefault(); }
+  else if(e.key==='ArrowLeft'){ goFrame(cur-step(),false); e.preventDefault(); }
+});
+// Todos los cuadros con los puntos completos, calculados con el modelo
+function videoResults(){
+  const inp=readInputs();
+  return Object.keys(frames).map(Number).sort((a,b)=>a-b)
+    .map(i=>({i, t:i/fps(), hold:holdAt(i), R:calcModel(frames[i],{...inp, hold:holdAt(i)})})).filter(p=>p.R.ok);
+}
+let peakFrame=null, chartX=null;
+// Mueve solo la línea vertical del gráfico (sin redibujarlo entero)
+function moveCursor(){
+  const l=document.getElementById('vNow'); if(!l || !chartX) return;
+  const x=chartX(cur/fps()); l.setAttribute('x1',x); l.setAttribute('x2',x);
+}
+function renderVideo(){
+  if(!isVideo) return;
+  renderAutoRes();
+  const box=$('vChart'), sum=$('vSum'), list=videoResults();
+  if(!list.length){ peakFrame=null; sum.innerHTML='';
+    box.innerHTML='<p class="note" style="margin:0">Todavía no hay cuadros completos. Marcá los puntos en un cuadro y avanzá con ▶ (o la flecha →): los puntos se copian al cuadro siguiente y solo tenés que arrastrar los que se movieron.</p>'; return; }
+  const peak=list.reduce((a,b)=>b.R.Fc>a.R.Fc?b:a); peakFrame=peak.i;
+  const W=Math.max(280,box.clientWidth), H=240, ml=54, mr=14, mt=14, mb=34;
+  const dur=Math.max(nFrames/fps(),0.001);
+  const yMax=Math.max(8000,Math.ceil(peak.R.Fc*1.1/1000)*1000);
+  const X=t=>ml+t/dur*(W-ml-mr), Y=v=>mt+(1-v/yMax)*(H-mt-mb);
+  let s=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Compresión en L5-S1 a lo largo del video">`;
+  // bandas NIOSH
+  s+=`<rect class="b-ok" x="${ml}" y="${Y(3400)}" width="${W-ml-mr}" height="${Y(0)-Y(3400)}"/>`;
+  s+=`<rect class="b-warn" x="${ml}" y="${Y(6400)}" width="${W-ml-mr}" height="${Y(3400)-Y(6400)}"/>`;
+  s+=`<rect class="b-bad" x="${ml}" y="${Y(yMax)}" width="${W-ml-mr}" height="${Y(6400)-Y(yMax)}"/>`;
+  // franja del intervalo de agarre (solo ahí se suma la carga)
+  if(grip.start!=null || grip.end!=null){
+    const x0=X((grip.start??0)/fps()), x1=X(Math.min(grip.end??nFrames-1, nFrames-1)/fps());
+    s+=`<rect class="grip" x="${x0}" y="${mt}" width="${Math.max(2,x1-x0)}" height="${H-mt-mb}"/><text class="griplbl" x="${x0+5}" y="${H-mb-6}">sostiene la carga</text>`;
+  }
+  // eje vertical (N)
+  for(let v=0;v<=yMax;v+=2000) s+=`<line class="gl" x1="${ml}" x2="${W-mr}" y1="${Y(v)}" y2="${Y(v)}"/><text class="tk" x="${ml-6}" y="${Y(v)+4}" text-anchor="end">${fmt(v)}</text>`;
+  [3400,6400].forEach(v=>s+=`<line class="lm" x1="${ml}" x2="${W-mr}" y1="${Y(v)}" y2="${Y(v)}"/>`);
+  s+=`<text class="tk" x="${ml+6}" y="${mt+12}">F<tspan dy="3" font-size="9">c</tspan><tspan dy="-3"> (N)</tspan></text>`;
+  // eje horizontal (s)
+  const st=[0.05,0.1,0.2,0.5,1,2,5,10,20,30,60].find(x=>dur/x<=8)||120;
+  for(let j=0;j*st<=dur+1e-9;j++) s+=`<text class="tk" x="${X(j*st)}" y="${H-mb+16}" text-anchor="middle">${fmt(j*st,st<1?(st<0.1?2:1):0)}</text>`;
+  s+=`<text class="tk" x="${W-mr}" y="${H-3}" text-anchor="end">tiempo (s)</text>`;
+  // cuadro actual
+  s+=`<line class="now" id="vNow" x1="${X(cur/fps())}" x2="${X(cur/fps())}" y1="${mt}" y2="${H-mb}"/>`;
+  chartX=X;
+  // curva y puntos
+  s+=`<polyline class="curve" points="${list.map(p=>X(p.t)+','+Y(p.R.Fc)).join(' ')}"/>`;
+  list.forEach(p=>s+=`<circle class="${p===peak?'peak ':''}${p.i===cur?'cur ':''}${autoSet.has(p.i)?'':'man'}" data-i="${p.i}" cx="${X(p.t)}" cy="${Y(p.R.Fc)}" r="${p===peak?6:4.5}"><title>Cuadro ${p.i} · ${fmt(p.t,2)} s · ${fmt(p.R.Fc)} N</title></circle>`);
+  const px=X(peak.t), right=px>W/2;
+  s+=`<text class="peaklbl" x="${px+(right?-10:10)}" y="${Y(peak.R.Fc)-10}" text-anchor="${right?'end':'start'}">pico ${fmt(peak.R.Fc)} N</text>`;
+  box.innerHTML=s+'</svg>';
+  box.querySelectorAll('circle[data-i]').forEach(c=>c.onclick=()=>goFrame(+c.dataset.i,false));
+  const [,lbl]=classify(peak.R.Fc);
+  sum.innerHTML=`<dt>Cuadros analizados</dt><dd>${list.length}</dd>
+    <dt><b>Pico de compresión</b></dt><dd><b>${fmt(peak.R.Fc)} N</b></dd>
+    <dt>Clasificación del pico</dt><dd style="font-family:var(--f-body)">${lbl}</dd>
+    <dt>Ocurre en</dt><dd>${fmt(peak.t,2)} s (cuadro ${peak.i})</dd>
+    <dt>Momento y θ en el pico</dt><dd>${fmt(peak.R.Mtot,1)} N·m · ${fmt(peak.R.theta*180/Math.PI,1)}°</dd>
+    <dt>Cuadros por encima de 3400 N</dt><dd>${list.filter(p=>p.R.Fc>=3400).length} de ${list.length}</dd>`;
+}
+$('vPeak').onclick=()=>{ if(peakFrame!=null) goFrame(peakFrame,false); };
+
+// ---------- Detección automática con MediaPipe (etapa 3, opción B: calibración con el propio sujeto) ----------
+// MediaPipe detecta hombro, codo, muñeca, mano, cadera, rodilla, tobillo, oreja y nariz, pero NO L5-S1, C7,
+// vértex ni la carga. Esos cuatro se ubican con la relación que tienen con los puntos detectados en los
+// cuadros que el grupo marcó a mano ("cuadros de calibración").
+const MP = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+const MP_MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task';
+let landmarker = null, stopAuto = false, lastCal = null;
+const aMsg = t => { $('aMsg').textContent = t; };
+const sub = (a,b) => [a[0]-b[0], a[1]-b[1]];
+const mid = (a,b) => [(a[0]+b[0])/2, (a[1]+b[1])/2];
+const dist = (a,b) => Math.hypot(a[0]-b[0], a[1]-b[1]);
+
+async function loadDetector(){
+  if(landmarker) return;
+  aMsg('Descargando el detector de pose (solo la primera vez)…');
+  const {FilesetResolver, PoseLandmarker} = await import(MP+'/vision_bundle.mjs');
+  const files = await FilesetResolver.forVisionTasks(MP+'/wasm');
+  const opts = delegate => ({baseOptions:{modelAssetPath:MP_MODEL, delegate}, runningMode:'IMAGE', numPoses:1});
+  try{ landmarker = await PoseLandmarker.createFromOptions(files, opts('GPU')); }      // placa de video
+  catch(e){ landmarker = await PoseLandmarker.createFromOptions(files, opts('CPU')); } // si no hay, procesador
+}
+
+// Numeración de MediaPipe: 0 nariz, 7/8 oreja, 11/12 hombro, 13/14 codo, 15/16 muñeca, 17/18 meñique,
+// 19/20 índice, 23/24 cadera, 25/26 rodilla, 27/28 tobillo (impar = lado izquierdo, par = derecho).
+const SIDE = {
+  L:{ear:7, sho:11, elb:13, wri:15, pinky:17, index:19, hip:23, knee:25, ank:27},
+  R:{ear:8, sho:12, elb:14, wri:16, pinky:18, index:20, hip:24, knee:26, ank:28},
+};
+// Detecta la pose en el cuadro que muestra el video. Devuelve los puntos en px de la imagen.
+function detectFrame(){
+  const r = landmarker.detect(video); const L = r.landmarks && r.landmarks[0];
+  if(!L) return null;
+  const vis = i => L[i].visibility ?? 1;
+  const score = S => ['sho','elb','wri','hip','knee','ank'].reduce((a,k)=>a+vis(S[k]),0);
+  const S = score(SIDE.L) >= score(SIDE.R) ? SIDE.L : SIDE.R; // el lado más visible = el más cercano a la cámara
+  const px = i => [L[i].x*imgW, L[i].y*imgH];
+  const d = {nose:px(0)}; for(const k in S) d[k] = px(S[k]);
+  d.hand = mid(d.pinky, d.index);              // 3er metacarpiano ≈ punto medio entre índice y meñique
+  d.s = Math.sign(d.nose[0]-d.ear[0]) || 1;    // hacia dónde mira: +1 derecha, -1 izquierda
+  return d;
+}
+
+// Coordenadas locales de un punto P respecto de un segmento que arranca en O con dirección d:
+//   P = O + a·d + b·s·d⊥   (d⊥ = d girado 90°; s corrige si la persona mira al otro lado)
+// a y b quedan como FRACCIÓN del largo del segmento, así no dependen de la distancia a la cámara.
+function toLocal(O, d, s, P){
+  const r = sub(P,O), L2 = d[0]*d[0]+d[1]*d[1];
+  return [(r[0]*d[0]+r[1]*d[1])/L2, (-r[0]*d[1]+r[1]*d[0])/L2*s];
+}
+function fromLocal(O, d, s, [a,b]){
+  return [O[0]+a*d[0]-b*s*d[1], O[1]+a*d[1]+b*s*d[0]];
+}
+// Segmentos de referencia (todos detectados por MediaPipe):
+//   L5-S1 → respecto de cadera→hombro · C7 → respecto de hombro→oreja · vértex → respecto de oreja→nariz
+//   carga → desplazamiento fijo desde la mano (la caja cuelga de las manos), en fracción del largo cadera→hombro
+function calibOf(d, P){
+  const T = sub(d.sho,d.hip), Tl = Math.hypot(...T);
+  return { l5:   toLocal(d.hip, T, d.s, P.l5),
+           c7:   toLocal(d.sho, sub(d.ear,d.sho), d.s, P.c7),
+           vert: toLocal(d.ear, sub(d.nose,d.ear), d.s, P.vert),
+           load: [(P.load[0]-d.hand[0])*d.s/Tl, (P.load[1]-d.hand[1])/Tl] };
+}
+// Promedio de las calibraciones de varios cuadros
+function meanCal(list){
+  const m = {}; for(const k of ['l5','c7','vert','load']) m[k] = [0,1].map(j=>list.reduce((a,c)=>a+c[k][j],0)/list.length);
+  return m;
+}
+// Arma los puntos de un cuadro: los detectados tal cual + los cuatro estimados con la calibración
+function autoPoints(d, C, cal){
+  const T = sub(d.sho,d.hip), Tl = Math.hypot(...T);
+  return { cal1:[...cal[0]], cal2:[...cal[1]],
+    sho:d.sho, elb:d.elb, wri:d.wri, hand:d.hand, hip:d.hip, knee:d.knee, ank:d.ank,
+    l5:   fromLocal(d.hip, T, d.s, C.l5),
+    c7:   fromLocal(d.sho, sub(d.ear,d.sho), d.s, C.c7),
+    vert: fromLocal(d.ear, sub(d.nose,d.ear), d.s, C.vert),
+    load: [d.hand[0]+C.load[0]*d.s*Tl, d.hand[1]+C.load[1]*Tl] };
+}
+// Mueve el video al cuadro i y espera a que esté listo
+function seekTo(i){
+  return new Promise(res=>{ const h=()=>{ video.removeEventListener('seeked',h); res(); };
+    video.addEventListener('seeked',h); video.currentTime=Math.min((i+0.5)/fps(), Math.max(0,video.duration-0.001)); });
+}
+
+const CAL_NEED = ['cal1','cal2','l5','c7','vert','load'];
+$('vCal').onclick=()=>{
+  if(calSet.has(cur)) calSet.delete(cur);
+  else{
+    const miss = CAL_NEED.filter(k=>!pts[k]);
+    if(miss.length){ alert('Para usar este cuadro en la calibración falta marcar: '+miss.map(id=>POINTS.find(p=>p.id===id).name).join(', ')); return; }
+    // la posición de la carga respecto de la mano solo se puede medir si la está sosteniendo
+    if(!holdAt(cur)){ alert('Este cuadro está fuera del intervalo de agarre. Para calibrar, elegí cuadros en los que la persona sostiene la carga.'); return; }
+    frames[cur]=pts; autoSet.delete(cur); calSet.add(cur);
+  }
+  goFrame(cur,false);
+};
+$('aStop').onclick=()=>{ stopAuto=true; };
+$('aRun').onclick=async()=>{
+  if(busy) return;
+  if(playing) stopPlay();
+  const calsAll=[...calSet].sort((a,b)=>a-b).filter(i=>frames[i] && CAL_NEED.every(k=>frames[i][k]));
+  const cals=calsAll.filter(holdAt); // solo cuadros con la carga agarrada
+  if(calsAll.length && !cals.length){ aMsg('Todos los cuadros de calibración quedaron fuera del intervalo de agarre. Elegí cuadros en los que la persona sostiene la carga.'); return; }
+  if(!cals.length){ aMsg('Primero marcá a mano todos los puntos (incluida la carga) en al menos un cuadro y tocá “Usar este cuadro para calibrar”. Lo ideal son 3 o 4 cuadros distintos.'); return; }
+  busy=true; stopAuto=false; $('aRun').disabled=true; $('aStop').hidden=false;
+  try{
+    await loadDetector();
+    // 1) Calibración: dónde caen L5-S1, C7, vértex y la carga respecto de lo que detecta MediaPipe
+    aMsg('Calibrando…');
+    const C=[], calMiss=[];
+    for(const i of cals){ await seekTo(i); const d=detectFrame(); if(d) C.push({i, d, P:frames[i], c:calibOf(d,frames[i])}); else calMiss.push(i); }
+    if(!C.length) throw new Error('MediaPipe no encontró a la persona en los cuadros de calibración.');
+    const par=meanCal(C.map(x=>x.c));
+    const ref=frames[C[0].i], cal=[ref.cal1, ref.cal2]; // cámara fija: la misma referencia sirve para todo el video
+    // 2) Se borran los cuadros automáticos anteriores y se analiza el video (los marcados a mano se respetan)
+    for(const i of autoSet) delete frames[i]; autoSet.clear();
+    const st=Math.max(1,Math.round(+$('aStep').value||1)); let seen=0, miss=0;
+    for(let i=0; i<nFrames && !stopAuto; i+=st){
+      seen++;
+      if(frames[i]) continue;
+      await seekTo(i); const d=detectFrame();
+      if(!d){ miss++; continue; }
+      frames[i]=autoPoints(d, par, cal); autoSet.add(i);
+      if(seen%5===0){ aMsg(`Analizando… cuadro ${i} de ${nFrames-1}`); renderVideo(); }
+    }
+    lastCal={C, par};
+    aMsg(`${stopAuto?'Análisis detenido':'Listo'}: ${seen} cuadros revisados${miss?` (en ${miss} no se detectó a la persona)`:''}. Calibración con ${C.length} cuadro${C.length>1?'s':''}.`+
+      (calMiss.length?` En ${calMiss.length>1?'los cuadros':'el cuadro'} ${calMiss.join(', ')} MediaPipe no encontró a la persona, así que no ${calMiss.length>1?'se usaron':'se usó'} para calibrar: probá con otro${calMiss.length>1?'s':''}.`:''));
+  }catch(e){
+    console.error(e);
+    aMsg('Error: '+(e.message||e)+(landmarker?'':' — revisá la conexión a internet (el detector se descarga la primera vez).'));
+  }
+  busy=false; $('aRun').disabled=false; $('aStop').hidden=true;
+  goFrame(cur,false);
+};
+
+// Validación: en cada cuadro de calibración se compara lo automático contra lo marcado a mano.
+// Para los puntos estimados se usa validación cruzada: se calibra con los OTROS cuadros y se prueba en este
+// (si no, el error daría cero por construcción). Por eso hacen falta al menos 2 cuadros, mejor 3 o 4.
+function renderAutoRes(){
+  const box=$('aRes'); if(!lastCal){ box.innerHTML=''; return; }
+  const {C, par}=lastCal, inp=readInputs(), n=C.length;
+  const KEYS=[['sho','Hombro',1],['elb','Codo',1],['wri','Muñeca',1],['hand','Mano',1],['hip','Cadera',1],['knee','Rodilla',1],['ank','Tobillo',1],
+              ['l5','L5-S1',0],['c7','C7',0],['vert','Vértex',0],['load','Centro de la carga',0]];
+  const err={}; KEYS.forEach(([k])=>err[k]=[]); const cmp=[];
+  C.forEach((x,j)=>{
+    const others=C.filter((_,q)=>q!==j);
+    const p = others.length ? meanCal(others.map(o=>o.c)) : x.c;
+    const A = autoPoints(x.d, p, [x.P.cal1, x.P.cal2]);
+    const cmPx = (+$('refLen').value||0) / dist(x.P.cal1, x.P.cal2);   // cm por px en ese cuadro
+    KEYS.forEach(([k,,det])=>{ if(x.P[k] && (det || others.length)) err[k].push(dist(A[k],x.P[k])*cmPx); });
+    if(others.length){ const Rm=calcModel(x.P,{...inp,hold:true}), Ra=calcModel(A,{...inp,hold:true}); if(Rm.ok&&Ra.ok) cmp.push({i:x.i, m:Rm.Fc, a:Ra.Fc}); }
+  });
+  const avg=a=>a.reduce((s,v)=>s+v,0)/a.length;
+  let h=`<h2 style="margin-top:14px">Validación contra el marcado a mano</h2><div class="tbl-wrap"><table>
+    <thead><tr><th>Punto</th><th style="text-align:left">Cómo se obtiene</th><th>Error medio (cm)</th><th>Error máx. (cm)</th></tr></thead><tbody>`;
+  KEYS.forEach(([k,name,det])=>{ const e=err[k];
+    h+=`<tr><td>${name}</td><td style="text-align:left;font-family:var(--f-body)">${det?'detectado':'estimado (calibración)'}</td><td>${e.length?fmt(avg(e),1):'—'}</td><td>${e.length?fmt(Math.max(...e),1):'—'}</td></tr>`; });
+  h+=`</tbody></table></div>`;
+  if(cmp.length){
+    const dif=cmp.map(c=>c.a-c.m);
+    h+=`<div class="tbl-wrap" style="margin-top:10px"><table><thead><tr><th>Cuadro</th><th>F<sub>c</sub> a mano (N)</th><th>F<sub>c</sub> automático (N)</th><th>Diferencia</th></tr></thead><tbody>`+
+      cmp.map(c=>`<tr><td>${c.i}</td><td>${fmt(c.m)}</td><td>${fmt(c.a)}</td><td>${fmt(c.a-c.m)} N (${fmt((c.a/c.m-1)*100,1)} %)</td></tr>`).join('')+
+      `<tr><td><b>Promedio |dif.|</b></td><td></td><td></td><td><b>${fmt(avg(dif.map(Math.abs)))} N (${fmt(avg(cmp.map(c=>Math.abs(c.a/c.m-1)*100)),1)} %)</b></td></tr></tbody></table></div>`;
+  } else h+=`<p class="note">Con un solo cuadro de calibración no se puede validar L5-S1, C7, vértex ni la carga. Agregá 2 o 3 cuadros más.</p>`;
+  h+=`<h2 style="margin-top:14px">Calibración usada (promedio de ${n} cuadro${n>1?'s':''})</h2><div class="tbl-wrap"><table>
+    <thead><tr><th>Punto</th><th style="text-align:left">Referencia</th><th>a</th><th>b</th></tr></thead><tbody>
+    <tr><td>L5-S1</td><td style="text-align:left;font-family:var(--f-body)">cadera → hombro</td><td>${fmt(par.l5[0],3)}</td><td>${fmt(par.l5[1],3)}</td></tr>
+    <tr><td>C7</td><td style="text-align:left;font-family:var(--f-body)">hombro → oreja</td><td>${fmt(par.c7[0],3)}</td><td>${fmt(par.c7[1],3)}</td></tr>
+    <tr><td>Vértex</td><td style="text-align:left;font-family:var(--f-body)">oreja → nariz</td><td>${fmt(par.vert[0],3)}</td><td>${fmt(par.vert[1],3)}</td></tr>
+    <tr><td>Carga</td><td style="text-align:left;font-family:var(--f-body)">desde la mano (÷ largo cadera→hombro)</td><td>${fmt(par.load[0],3)}</td><td>${fmt(par.load[1],3)}</td></tr>
+    </tbody></table></div>
+    <p class="note">Punto = origen + a·(segmento) + b·(segmento girado 90°). a y b son fracciones del largo del segmento, así no dependen de la distancia a la cámara. Para la carga: a = desplazamiento horizontal (+ hacia adelante) y b = vertical (+ hacia abajo).</p>`;
+  box.innerHTML=h;
+}
 window.addEventListener('resize',()=>{ sizeCanvas(); update(); });
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{ if(isDemo){ const p=pts; img=demoImage(); img.onload=()=>{pts=p; update();}; } else update(); });
 
