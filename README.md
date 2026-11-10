@@ -23,6 +23,8 @@ La foto y el video se procesan solo en el navegador; no se suben a ningún servi
 
 8. **La carga solo se suma cuando la persona la sostiene.** En una foto, con la casilla "Sostiene la carga". En un video, marcando el intervalo de agarre con "Agarra la carga aquí" y "Suelta la carga aquí" (se ve como una franja en el gráfico). Fuera de ese intervalo, el peso y el momento de la carga valen 0 (por ejemplo, cuando la persona se agacha a acomodar la caja sin levantarla).
 
+9. **Cámara en vivo (en desarrollo):** con "Usar la cámara" se calibra con 3 o 4 capturas (cuenta regresiva, se congela la imagen y se marcan los puntos a mano) y después se ve en tiempo real el esqueleto, la compresión con su color NIOSH y el gráfico de los últimos 10 s. Por ahora se considera que la persona sostiene la carga todo el tiempo.
+
 **Hoja de ruta:** el objetivo final es usar el modelo con la cámara en vivo (ver `CLAUDE.md`).
 
 ## Cómo usarla

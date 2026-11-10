@@ -57,7 +57,11 @@ Los integrantes son estudiantes de Ingeniería Biomédica. Se defiende oralmente
    - Cada punto estimado = origen + a·segmento + b·segmento girado 90°; (a, b) = promedio de los cuadros de calibración (marcados a mano).
    - Validación: validación cruzada en los cuadros de calibración (error en cm por punto y diferencia de Fc a mano vs automático).
    - Pendiente: probar con videos reales y comparar contra Tracker.
-4. Cámara en vivo (suavizado, indicador NIOSH en tiempo real, registro del pico).
+4. 🔧 Cámara en vivo (rama `camara-en-vivo`, en desarrollo).
+   - Calibración con "capturas": cuenta regresiva (3/5/10 s) + pitido, se congela la imagen y se marcan los puntos a mano (la referencia se copia de la captura anterior). Misma calibración opción B que el video.
+   - En vivo: MediaPipe en modo VIDEO, lado del cuerpo fijo (el más visto en las capturas), suavizado opcional = promedio de los últimos 5 cuadros. Gráfico de Fc de los últimos 10 s, pico y tiempo sobre 3400 N; al detener, la sesión completa va al texto para Excel.
+   - **Por ahora se considera que la persona sostiene la carga todo el tiempo** (decisión del grupo, 2026-11-09); el agarre en vivo queda pendiente.
+   - Código: `startCam()`, `capture()`, `editCap()`, `startLive()`, `liveLoop()`, `smooth()`, `renderCamChart()`.
 
 ## Pendientes / ideas
 

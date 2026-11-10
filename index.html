@@ -139,6 +139,7 @@ footer{margin-top:20px;color:var(--muted);font-size:.82rem;max-width:90ch}
         <button id="btnDemo" type="button">Ver ejemplo</button>
         <button id="btnClearPt" type="button">Borrar punto activo</button>
         <button id="btnReset" type="button">Borrar todos los puntos</button>
+        <button id="btnCam" type="button">Usar la cámara</button>
       </div>
       <!-- Controles de video (solo visibles con un video cargado) -->
       <div class="vbar" id="vbar" hidden>
@@ -161,6 +162,16 @@ footer{margin-top:20px;color:var(--muted);font-size:.82rem;max-width:90ch}
         <button id="gClear" type="button">Borrar agarre</button>
         <span class="note" id="gInfo" style="margin:0;align-self:center"></span>
       </div>
+      <!-- Controles de la cámara (solo visibles con la cámara encendida) -->
+      <div class="vopts" id="camBar" hidden>
+        <label class="f" style="width:7em">Espera<select id="camDelay"><option value="3">3 s</option><option value="5" selected>5 s</option><option value="10">10 s</option></select></label>
+        <button id="camCap" type="button">Capturar postura</button>
+        <button id="camBack" type="button" hidden>Volver a la cámara</button>
+        <button id="camLive" type="button" class="primary" disabled>▶ Iniciar en vivo</button>
+        <label class="check"><input type="checkbox" id="camSmooth" checked> Suavizar (promedio de 5 cuadros)</label>
+        <button id="camOff" type="button">Apagar cámara</button>
+      </div>
+      <div class="toolbar" id="camCaps" hidden></div>
       <div class="hint" id="hint" aria-live="polite"></div>
       <div class="canvas-box"><canvas id="cv" width="800" height="1000" aria-label="Foto con los puntos marcados"></canvas></div>
       <div class="pts" id="ptList"></div>
@@ -221,6 +232,19 @@ footer{margin-top:20px;color:var(--muted);font-size:.82rem;max-width:90ch}
     <p class="note" id="aMsg" aria-live="polite" style="margin-top:0"></p>
     <div id="aRes"></div>
     <p class="note">El detector se descarga de internet la primera vez (≈ 20 MB) y después corre en tu computadora: el video no se envía a ningún lado.</p>
+  </section>
+
+  <section class="panel" style="margin-top:16px" id="camPanel" aria-label="Cámara en vivo" hidden>
+    <h2>Cámara en vivo</h2>
+    <ol class="steps">
+      <li>Fijá la cámara de perfil, a la altura de la cadera, con el cuerpo entero y el termo a la vista. <b>No la muevas después de calibrar.</b></li>
+      <li>Tocá <b>“Capturar postura”</b>, ponete en posición <b>sosteniendo la carga</b> y esperá el pitido: la imagen queda congelada. Marcá todos los puntos a mano (la referencia se copia sola a las capturas siguientes). Repetí con 3 o 4 posturas distintas.</li>
+      <li>Tocá <b>“Iniciar en vivo”</b>. Por ahora el modelo considera que la persona sostiene la carga todo el tiempo.</li>
+    </ol>
+    <p class="note" id="camMsg" aria-live="polite"></p>
+    <div class="chart" id="camChart"></div>
+    <dl class="kv" id="camSum"></dl>
+    <div id="camRes"></div>
   </section>
 
   <section class="panel" style="margin-top:16px" id="vidPanel" aria-label="Evolución en el video" hidden>
@@ -374,6 +398,7 @@ function toImg(e){ const r=cv.getBoundingClientRect(); return [(e.clientX-r.left
 function hit(p){ const R=14/k; let best=null,bd=R; for(const id in pts){ const d=Math.hypot(pts[id][0]-p[0],pts[id][1]-p[1]); if(d<bd){bd=d;best=id;} } return best; }
 cv.addEventListener('pointerdown',e=>{
   if(playing){ $('vPlay').click(); return; } // durante la reproducción, un clic en la foto pausa
+  if(isCam && camState!=='cap') return;      // con la cámara solo se marca sobre una captura congelada
   const p=toImg(e); const h=hit(p);
   if(h && h!==active){ drag=h; cv.setPointerCapture(e.pointerId); return; }
   if(active){ pts[active]=p; if(isVideo){ frames[cur]=pts; autoSet.delete(cur); } drag=active; cv.setPointerCapture(e.pointerId); advance(); update(); }
@@ -388,7 +413,8 @@ function advance(){ const next = POINTS.find(p=>!pts[p.id]); active = next?next.
 function readInputs(){
   return {Mb:+$('mBody').value||0, Ml:+$('mLoad').value||0, Lref:(+$('refLen').value||0)/100, dm:(+$('dMus').value||0)/100,
     facing:$('facing').value, bilat:$('bilat').checked, params,
-    hold: isVideo ? holdAt(cur) : $('holdChk').checked}; // ¿sostiene la carga? (video: según el intervalo de agarre)
+    // ¿sostiene la carga? cámara: siempre (por ahora) · video: según el intervalo de agarre · foto: la casilla
+    hold: isCam ? true : isVideo ? holdAt(cur) : $('holdChk').checked};
 }
 // Calcula con los puntos marcados en pantalla (foto o cuadro actual del video)
 function compute(){ return calcModel(pts, readInputs()); }
@@ -439,7 +465,8 @@ function calcModel(P, inp){
 function draw(R){
   ctx.clearRect(0,0,imgW,imgH);
   if(isVideo){ if(video && video.readyState>=2) ctx.drawImage(video,0,0,imgW,imgH); }
-  else if(img && img.complete) ctx.drawImage(img,0,0,imgW,imgH);
+  else if(isCam && camState!=='cap'){ if(cam && cam.readyState>=2) ctx.drawImage(cam,0,0,imgW,imgH); } // imagen de la cámara
+  else if(img && img.complete!==false) ctx.drawImage(img,0,0,imgW,imgH); // foto o captura congelada
   const acc=css('--accent'), load=css('--load'), ink=css('--ink');
   const lw = 2/k, fs = 13/k;
   ctx.font = `600 ${fs}px "IBM Plex Mono", monospace`;
@@ -486,6 +513,9 @@ function renderList(){
   const h=$('hint');
   if(active){ const p=POINTS.find(x=>x.id===active); h.innerHTML=`Marcá <b>${p.name}</b>: ${HELP[active]}.`; }
   else h.innerHTML = `Todos los puntos marcados. Arrastralos para ajustar, o tocá uno de la lista para volver a marcarlo.`;
+  if(isCam && camState==='preview') h.innerHTML = `Vista de la cámara. Tocá <b>Capturar postura</b> para congelar una imagen y marcar los puntos.`;
+  if(isCam && camState==='live') h.innerHTML = `<b>En vivo.</b> Los puntos los detecta MediaPipe; L5-S1, C7, vértex y la carga salen de la calibración.`;
+  if(isCam) renderCaps();
 }
 function update(){
   const R=compute(); draw(R); renderList();
@@ -547,6 +577,11 @@ function exportText(){
   const R=window._R;
   const n=(v,d=2)=>isFinite(v)?v.toFixed(d).replace('.',','):'';
   let s='';
+  if(isCam && session.length){
+    s+=`Cámara en vivo (se considera que sostiene la carga todo el tiempo)\nTiempo (s)\tθ tronco (°)\tRodilla (°)\tMomento total (N·m)\tF erectores (N)\tCompresión (N)\tCorte (N)\n`;
+    session.forEach(p=>s+=`${n(p.t,3)}\t${n(p.R.theta*180/Math.PI,1)}\t${p.R.knee==null?'':n(p.R.knee,0)}\t${n(p.R.Mtot,1)}\t${n(p.R.Fm,0)}\t${n(p.R.Fc,0)}\t${n(p.R.Fs,0)}\n`);
+    s+='\n';
+  }
   if(isVideo){ const list=videoResults(); if(list.length){
     s+=`Video cuadro a cuadro (${n(fps(),0)} cuadros/s)\nCuadro\tTiempo (s)\tθ tronco (°)\tRodilla (°)\tMomento total (N·m)\tF erectores (N)\tCompresión (N)\tCorte (N)\tSostiene la carga\n`;
     list.forEach(p=>s+=`${p.i}\t${n(p.t,3)}\t${n(p.R.theta*180/Math.PI,1)}\t${p.R.knee==null?'':n(p.R.knee,0)}\t${n(p.R.Mtot,1)}\t${n(p.R.Fm,0)}\t${n(p.R.Fc,0)}\t${n(p.R.Fs,0)}\t${p.hold?'sí':'no'}\n`);
@@ -610,6 +645,7 @@ function loadVideo(f){
   v.src=URL.createObjectURL(f);
 }
 function leaveVideo(){
+  leaveCam(); // cargar foto, video o ejemplo apaga la cámara
   if(video){ playing=false; video.pause(); setPlayBtn(); URL.revokeObjectURL(video.src); video=null; }
   isVideo=false; frames={}; cur=0; autoSet=new Set(); calSet=new Set(); stopAuto=true; lastCal=null;
   $('vbar').hidden=$('vopts').hidden=$('vidPanel').hidden=$('autoPanel').hidden=$('gripBar').hidden=true;
@@ -793,9 +829,11 @@ const sub = (a,b) => [a[0]-b[0], a[1]-b[1]];
 const mid = (a,b) => [(a[0]+b[0])/2, (a[1]+b[1])/2];
 const dist = (a,b) => Math.hypot(a[0]-b[0], a[1]-b[1]);
 
-async function loadDetector(){
+let lmMode='IMAGE'; // 'IMAGE' = cuadros sueltos (video, capturas) · 'VIDEO' = secuencia en vivo
+async function setMode(m){ if(lmMode!==m){ await landmarker.setOptions({runningMode:m}); lmMode=m; } }
+async function loadDetector(say=aMsg){
   if(landmarker) return;
-  aMsg('Descargando el detector de pose (solo la primera vez)…');
+  say('Descargando el detector de pose (solo la primera vez)…');
   const {FilesetResolver, PoseLandmarker} = await import(MP+'/vision_bundle.mjs');
   const files = await FilesetResolver.forVisionTasks(MP+'/wasm');
   const opts = delegate => ({baseOptions:{modelAssetPath:MP_MODEL, delegate}, runningMode:'IMAGE', numPoses:1});
@@ -809,15 +847,17 @@ const SIDE = {
   L:{ear:7, sho:11, elb:13, wri:15, pinky:17, index:19, hip:23, knee:25, ank:27},
   R:{ear:8, sho:12, elb:14, wri:16, pinky:18, index:20, hip:24, knee:26, ank:28},
 };
-// Detecta la pose en el cuadro que muestra el video. Devuelve los puntos en px de la imagen.
-function detectFrame(){
-  const r = landmarker.detect(video); const L = r.landmarks && r.landmarks[0];
+// Detecta la pose en una imagen (por defecto, el cuadro que muestra el video). Devuelve los puntos en px.
+//   src: video, cámara o captura · ts: tiempo en ms (solo en vivo) · side: forzar lado 'L'/'R' (en vivo)
+function detectFrame(src=video, ts=null, side=null){
+  const r = ts==null ? landmarker.detect(src) : landmarker.detectForVideo(src, ts);
+  const L = r.landmarks && r.landmarks[0];
   if(!L) return null;
   const vis = i => L[i].visibility ?? 1;
   const score = S => ['sho','elb','wri','hip','knee','ank'].reduce((a,k)=>a+vis(S[k]),0);
-  const S = score(SIDE.L) >= score(SIDE.R) ? SIDE.L : SIDE.R; // el lado más visible = el más cercano a la cámara
+  const S = side ? SIDE[side] : score(SIDE.L) >= score(SIDE.R) ? SIDE.L : SIDE.R; // el lado más visible = el más cercano a la cámara
   const px = i => [L[i].x*imgW, L[i].y*imgH];
-  const d = {nose:px(0)}; for(const k in S) d[k] = px(S[k]);
+  const d = {nose:px(0), side: S===SIDE.L?'L':'R'}; for(const k in S) d[k] = px(S[k]);
   d.hand = mid(d.pinky, d.index);              // 3er metacarpiano ≈ punto medio entre índice y meñique
   d.s = Math.sign(d.nose[0]-d.ear[0]) || 1;    // hacia dónde mira: +1 derecha, -1 izquierda
   return d;
@@ -886,7 +926,7 @@ $('aRun').onclick=async()=>{
   if(!cals.length){ aMsg('Primero marcá a mano todos los puntos (incluida la carga) en al menos un cuadro y tocá “Usar este cuadro para calibrar”. Lo ideal son 3 o 4 cuadros distintos.'); return; }
   busy=true; stopAuto=false; $('aRun').disabled=true; $('aStop').hidden=false;
   try{
-    await loadDetector();
+    await loadDetector(); await setMode('IMAGE');
     // 1) Calibración: dónde caen L5-S1, C7, vértex y la carga respecto de lo que detecta MediaPipe
     aMsg('Calibrando…');
     const C=[], calMiss=[];
@@ -919,9 +959,9 @@ $('aRun').onclick=async()=>{
 // Validación: en cada cuadro de calibración se compara lo automático contra lo marcado a mano.
 // Para los puntos estimados se usa validación cruzada: se calibra con los OTROS cuadros y se prueba en este
 // (si no, el error daría cero por construcción). Por eso hacen falta al menos 2 cuadros, mejor 3 o 4.
-function renderAutoRes(){
-  const box=$('aRes'); if(!lastCal){ box.innerHTML=''; return; }
-  const {C, par}=lastCal, inp=readInputs(), n=C.length;
+function renderAutoRes(cal=lastCal, box=$('aRes')){
+  if(!cal){ box.innerHTML=''; return; }
+  const {C, par}=cal, inp=readInputs(), n=C.length;
   const KEYS=[['sho','Hombro',1],['elb','Codo',1],['wri','Muñeca',1],['hand','Mano',1],['hip','Cadera',1],['knee','Rodilla',1],['ank','Tobillo',1],
               ['l5','L5-S1',0],['c7','C7',0],['vert','Vértex',0],['load','Centro de la carga',0]];
   const err={}; KEYS.forEach(([k])=>err[k]=[]); const cmp=[];
@@ -954,6 +994,192 @@ function renderAutoRes(){
     </tbody></table></div>
     <p class="note">Punto = origen + a·(segmento) + b·(segmento girado 90°). a y b son fracciones del largo del segmento, así no dependen de la distancia a la cámara. Para la carga: a = desplazamiento horizontal (+ hacia adelante) y b = vertical (+ hacia abajo).</p>`;
   box.innerHTML=h;
+}
+
+// ---------- Cámara en vivo (etapa 4) ----------
+// Usa el mismo modelo (calcModel) y la misma calibración (opción B) que el video. Diferencias:
+//  · la calibración se hace con "capturas": imágenes congeladas de la cámara que se marcan a mano;
+//  · en vivo se considera que la persona sostiene la carga todo el tiempo (el agarre se agrega más adelante);
+//  · los puntos detectados se pueden suavizar promediando los últimos 5 cuadros.
+let isCam=false, cam=null, camState='off', caps=[], capIdx=-1, camRAF=0, camSide='L';
+let liveCal=null, session=[], liveT0=0, hist=[], countdown=0, lastChart=0, lastVT=-1, capTimer=0;
+const camMsg = t => { $('camMsg').textContent = t; };
+const capReady = c => !!c.det && CAL_NEED.every(k=>c.pts[k]); // captura lista para calibrar
+
+async function startCam(){
+  if(!navigator.mediaDevices?.getUserMedia){ alert('Este navegador no permite usar la cámara.'); return; }
+  let stream;
+  try{ stream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:1280}, height:{ideal:720}}, audio:false}); }
+  catch(e){ alert('No se pudo abrir la cámara ('+(e.message||e)+'). Revisá que el navegador tenga permiso para usarla.'); return; }
+  leaveVideo(); // apaga video/cámara anteriores
+  cam=document.createElement('video'); cam.muted=true; cam.playsInline=true; cam.srcObject=stream;
+  await cam.play();
+  isCam=true; isDemo=false; img=null; caps=[]; session=[]; liveCal=null;
+  $('camBar').hidden=$('camCaps').hidden=$('camPanel').hidden=false; $('holdRow').hidden=true;
+  $('camRes').innerHTML=''; $('camChart').innerHTML=''; $('camSum').innerHTML='';
+  $('modeTag').textContent='Cámara'; $('modeTag').hidden=false;
+  camPreview();
+  camMsg('Cámara encendida. Fijala de perfil y capturá 3 o 4 posturas para calibrar.');
+}
+function leaveCam(){
+  cancelAnimationFrame(camRAF); clearTimeout(capTimer); countdown=0;
+  if(cam){ cam.srcObject?.getTracks().forEach(t=>t.stop()); cam=null; }
+  isCam=false; camState='off'; caps=[]; capIdx=-1; session=[]; liveCal=null;
+  $('camBar').hidden=$('camCaps').hidden=$('camPanel').hidden=true;
+  $('camLive').textContent='▶ Iniciar en vivo';
+}
+// si la cámara ya está encendida, solo vuelve a la vista de la cámara (no borra las capturas)
+$('btnCam').onclick=()=>{ if(isCam){ if(camState==='live') stopLive(); else camPreview(); } else startCam(); };
+$('camOff').onclick=()=>loadDemo();
+
+// Vista de la cámara (sin calcular): sirve para encuadrar y para la cuenta regresiva
+function camPreview(){
+  cancelAnimationFrame(camRAF);
+  camState='preview'; capIdx=-1; img=null; pts={}; active=null;
+  imgW=cam.videoWidth||1280; imgH=cam.videoHeight||720; sizeCanvas();
+  $('camBack').hidden=true; $('camLive').textContent='▶ Iniciar en vivo';
+  update();
+  const loop=()=>{ if(camState!=='preview') return; draw(null); if(countdown) drawCountdown(); camRAF=requestAnimationFrame(loop); };
+  loop();
+}
+function drawCountdown(){
+  ctx.fillStyle='rgba(0,0,0,.45)'; ctx.fillRect(0,0,imgW,imgH);
+  ctx.fillStyle='#fff'; ctx.font=`800 ${Math.round(imgH*0.35)}px Archivo, sans-serif`;
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(countdown, imgW/2, imgH/2);
+  ctx.textAlign='start'; ctx.textBaseline='alphabetic';
+}
+function beep(){
+  try{ const a=new AudioContext(), o=a.createOscillator(), g=a.createGain();
+    o.frequency.value=880; g.gain.value=.15; o.connect(g).connect(a.destination);
+    o.start(); o.stop(a.currentTime+.2); o.onended=()=>a.close(); }catch(e){}
+}
+// "Capturar postura": cuenta regresiva, pitido y se congela la imagen
+$('camCap').onclick=()=>{
+  if(camState==='live') stopLive();
+  if(camState!=='preview') camPreview();
+  clearTimeout(capTimer);
+  countdown=+$('camDelay').value; camMsg(`Ponete en posición sosteniendo la carga… ${countdown}`);
+  const tick=()=>{ if(!isCam) return; countdown--;
+    if(countdown>0){ camMsg(`Ponete en posición sosteniendo la carga… ${countdown}`); capTimer=setTimeout(tick,1000); }
+    else capture(); };
+  capTimer=setTimeout(tick,1000);
+};
+async function capture(){
+  const c=document.createElement('canvas'); c.width=cam.videoWidth; c.height=cam.videoHeight;
+  c.getContext('2d').drawImage(cam,0,0); beep();
+  const cap={cnv:c, pts:{}, det:null};
+  const prev=caps[caps.length-1];   // cámara fija: la referencia (termo) se copia de la captura anterior
+  if(prev && prev.pts.cal1 && prev.pts.cal2){ cap.pts.cal1=[...prev.pts.cal1]; cap.pts.cal2=[...prev.pts.cal2]; }
+  caps.push(cap); editCap(caps.length-1);
+  camMsg('Captura lista. Marcá todos los puntos sobre la imagen congelada…');
+  try{ await loadDetector(camMsg); await setMode('IMAGE'); cap.det=detectFrame(c); }catch(e){ console.error(e); }
+  camMsg(cap.det ? 'Captura lista: MediaPipe detectó a la persona ✓. Marcá todos los puntos a mano.'
+                 : 'Ojo: MediaPipe no encontró a la persona en esta captura, así que no sirve para calibrar. Probá con otra.');
+  renderCaps();
+}
+// Abrir una captura para marcar sus puntos (como una foto)
+function editCap(k){
+  cancelAnimationFrame(camRAF); if(camState==='live') stopLive(true);
+  camState='cap'; capIdx=k; const cap=caps[k];
+  img=cap.cnv; imgW=cap.cnv.width; imgH=cap.cnv.height; pts=cap.pts; advance();
+  $('camBack').hidden=false; sizeCanvas(); update();
+}
+$('camBack').onclick=()=>camPreview();
+function renderCaps(){
+  const box=$('camCaps');
+  box.innerHTML = caps.length
+    ? caps.map((c,k)=>`<button type="button" class="${k===capIdx?'on':''}" data-k="${k}">Captura ${k+1} ${capReady(c)?'✓':c.det?'· faltan puntos':'· sin persona'}</button>`).join('')
+      + (capIdx>=0?`<button type="button" id="capDel">Borrar esta captura</button>`:'')
+    : '<span class="note" style="margin:0">Todavía no hay capturas de calibración.</span>';
+  box.querySelectorAll('button[data-k]').forEach(b=>b.onclick=()=>editCap(+b.dataset.k));
+  if($('capDel')) $('capDel').onclick=()=>{ caps.splice(capIdx,1); camPreview(); };
+  $('camLive').disabled = !caps.some(capReady) && camState!=='live';
+}
+
+// ---------- Modo en vivo ----------
+$('camLive').onclick=()=>{ if(camState==='live') stopLive(); else startLive(); };
+async function startLive(){
+  const ready=caps.filter(capReady); if(!ready.length) return;
+  await loadDetector(camMsg); await setMode('VIDEO');
+  // Calibración (opción B): promedio de las capturas listas
+  const C=ready.map(c=>({i:caps.indexOf(c)+1, d:c.det, P:c.pts, c:calibOf(c.det,c.pts)}));
+  liveCal={C, par:meanCal(C.map(x=>x.c)), cal:[ready[0].pts.cal1, ready[0].pts.cal2]};
+  // Lado del cuerpo fijo (el más visto en las capturas), para que en vivo no salte de un brazo al otro
+  camSide = ready.filter(c=>c.det.side==='L').length*2 >= ready.length ? 'L' : 'R';
+  renderAutoRes(liveCal, $('camRes'));
+  cancelAnimationFrame(camRAF);
+  camState='live'; capIdx=-1; img=null; imgW=cam.videoWidth; imgH=cam.videoHeight; sizeCanvas();
+  session=[]; hist=[]; lastVT=-1; liveT0=performance.now();
+  $('camBack').hidden=true; $('camLive').textContent='⏹ Detener'; renderList();
+  camMsg(`En vivo (calibración con ${C.length} captura${C.length>1?'s':''}). Se considera que sostiene la carga todo el tiempo.`);
+  liveLoop();
+}
+// En cada cuadro nuevo de la cámara: detectar → (suavizar) → completar con la calibración → calcModel
+function liveLoop(){
+  if(camState!=='live') return;
+  if(cam.readyState>=2 && cam.currentTime!==lastVT){
+    lastVT=cam.currentTime;
+    const now=performance.now();
+    const d=detectFrame(cam, now, camSide);
+    if(d){
+      const ds = $('camSmooth').checked ? smooth(d) : (hist=[], d);
+      pts = autoPoints(ds, liveCal.par, liveCal.cal);
+      const R = calcModel(pts, {...readInputs(), hold:true});
+      draw(R);
+      if(R.ok){ renderMain(R); session.push({t:(now-liveT0)/1000, R:{theta:R.theta, knee:R.knee, Mtot:R.Mtot, Fm:R.Fm, Fc:R.Fc, Fs:R.Fs}}); }
+    } else { pts={}; draw(null); } // no se ve a la persona: solo la imagen
+    if(now-lastChart>150){ lastChart=now; renderCamChart(); } // el gráfico se redibuja ~6 veces por segundo
+  }
+  camRAF=requestAnimationFrame(liveLoop);
+}
+// Suavizado: cada punto = promedio de su posición en los últimos 5 cuadros
+const SM_KEYS=['nose','ear','sho','elb','wri','pinky','index','hand','hip','knee','ank'];
+function smooth(d){
+  hist.push(d); if(hist.length>5) hist.shift();
+  const o={side:d.side};
+  for(const k of SM_KEYS) o[k]=[0,1].map(j=>hist.reduce((a,h)=>a+h[k][j],0)/hist.length);
+  o.s=Math.sign(o.nose[0]-o.ear[0])||1;
+  return o;
+}
+function stopLive(quiet){
+  camState='preview'; $('camLive').textContent='▶ Iniciar en vivo';
+  renderCamChart(); exportText();
+  if(!quiet) camPreview();
+  const dur=session.length?session[session.length-1].t:0;
+  camMsg(`Sesión detenida: ${fmt(dur,1)} s registrados. El gráfico muestra la sesión completa y los datos quedaron en el texto para Excel.`);
+}
+// Gráfico de Fc: en vivo, los últimos 10 s; detenido, la sesión completa
+function renderCamChart(){
+  const box=$('camChart'), sum=$('camSum');
+  if(!session.length){ box.innerHTML=''; sum.innerHTML=''; return; }
+  const live=camState==='live', tEnd=session[session.length-1].t;
+  const t1 = live ? Math.max(tEnd,10) : Math.max(tEnd,0.5), t0 = live ? t1-10 : 0;
+  const peak=session.reduce((a,b)=>b.R.Fc>a.R.Fc?b:a);
+  const W=Math.max(280,box.clientWidth), H=220, ml=54, mr=14, mt=14, mb=30;
+  const yMax=Math.max(8000,Math.ceil(peak.R.Fc*1.1/1000)*1000);
+  const X=t=>ml+(t-t0)/(t1-t0)*(W-ml-mr), Y=v=>mt+(1-Math.min(v,yMax)/yMax)*(H-mt-mb);
+  let s=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Compresión en L5-S1 en vivo">`;
+  s+=`<rect class="b-ok" x="${ml}" y="${Y(3400)}" width="${W-ml-mr}" height="${Y(0)-Y(3400)}"/>`;
+  s+=`<rect class="b-warn" x="${ml}" y="${Y(6400)}" width="${W-ml-mr}" height="${Y(3400)-Y(6400)}"/>`;
+  s+=`<rect class="b-bad" x="${ml}" y="${Y(yMax)}" width="${W-ml-mr}" height="${Y(6400)-Y(yMax)}"/>`;
+  for(let v=0;v<=yMax;v+=2000) s+=`<line class="gl" x1="${ml}" x2="${W-mr}" y1="${Y(v)}" y2="${Y(v)}"/><text class="tk" x="${ml-6}" y="${Y(v)+4}" text-anchor="end">${fmt(v)}</text>`;
+  [3400,6400].forEach(v=>s+=`<line class="lm" x1="${ml}" x2="${W-mr}" y1="${Y(v)}" y2="${Y(v)}"/>`);
+  const st=[0.5,1,2,5,10,20,30,60,120].find(x=>(t1-t0)/x<=8)||300;
+  for(let t=Math.ceil(t0/st)*st; t<=t1+1e-9; t+=st) s+=`<text class="tk" x="${X(t)}" y="${H-mb+16}" text-anchor="middle">${fmt(t,st<1?1:0)}</text>`;
+  s+=`<text class="tk" x="${W-mr}" y="${H-2}" text-anchor="end">tiempo (s)</text>`;
+  const vis=session.filter(p=>p.t>=t0);
+  s+=`<polyline class="curve" points="${vis.map(p=>X(p.t).toFixed(1)+','+Y(p.R.Fc).toFixed(1)).join(' ')}"/>`;
+  if(peak.t>=t0){ const px=X(peak.t), right=px>W/2;
+    s+=`<circle class="peak" cx="${px}" cy="${Y(peak.R.Fc)}" r="5"/><text class="peaklbl" x="${px+(right?-9:9)}" y="${Y(peak.R.Fc)-9}" text-anchor="${right?'end':'start'}">pico ${fmt(peak.R.Fc)} N</text>`; }
+  box.innerHTML=s+'</svg>';
+  // tiempo por encima del límite de acción: se suman los intervalos entre muestras con Fc ≥ 3400 N
+  let over=0; for(let j=0;j<session.length-1;j++) if(session[j].R.Fc>=3400) over+=session[j+1].t-session[j].t;
+  const [,lbl]=classify(peak.R.Fc);
+  sum.innerHTML=`<dt>Duración registrada</dt><dd>${fmt(tEnd,1)} s</dd>
+    <dt><b>Pico de compresión</b></dt><dd><b>${fmt(peak.R.Fc)} N</b></dd>
+    <dt>Clasificación del pico</dt><dd style="font-family:var(--f-body)">${lbl}</dd>
+    <dt>Ocurre en</dt><dd>${fmt(peak.t,1)} s</dd>
+    <dt>Tiempo por encima de 3400 N</dt><dd>${fmt(over,1)} s</dd>`;
 }
 window.addEventListener('resize',()=>{ sizeCanvas(); update(); });
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',()=>{ if(isDemo){ const p=pts; img=demoImage(); img.onload=()=>{pts=p; update();}; } else update(); });
